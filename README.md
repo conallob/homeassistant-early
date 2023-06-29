@@ -1,8 +1,8 @@
-![GitHub issues](https://img.shields.io/github/issues/conallob/timeular-sensor)
-![Released Version](https://img.shields.io/github/v/release/conallob/timeular-sensor)
+![GitHub issues](https://img.shields.io/github/issues/conallob/homeassistant-timeular)
+![Released Version](https://img.shields.io/github/v/release/conallob/homeassistant-timeular)
 
 
-# Timeular Sensor
+# Home Assistant Timeular Integration
 
 ## Overview
 
