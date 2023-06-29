@@ -1,3 +1,7 @@
+![GitHub issues](https://img.shields.io/github/issues/conallob/timeular-sensor)
+![Released Version](https://img.shields.io/github/v/release/conallob/timeular-sensor)
+
+
 # Timeular Sensor
 
 ## Overview
