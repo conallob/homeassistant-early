@@ -16,4 +16,6 @@
 
 - [ ] Set Timeular Status from within Home Assistant
 
+- [ ] Integrate Timeular Webhooks, instead of polling for state
+
 - [ ] Incorporate Timeular states in Home Assistant Automations
