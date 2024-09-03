@@ -1,28 +1,18 @@
-from homeassistant import core
-from homeassistant.helpers import config_entry_oauth2_flow
-from homeassistant.components.application_credentials import AuthImplementation, AuthorizationServer, ClientCredential
+from homeassistant.core import HomeAssistant
+from .const import DOMAIN
 
-
-async def async_setup(hass: core.HomeAssistant, config: dict) -> bool:
-    """Set up the Timeular component."""
-    # @TODO: Add setup code.
+async def async_setup(hass: HomeAssistant, config: dict):
+    """Set up the Timeular integration."""
     return True
 
-
-class OAuth2Impl(AuthImplementation):
-    """Custom OAuth2 implementation for Timeular.com."""
-    # ... Override AbstractOAuth2Implementation details
-
-async def async_get_auth_implementation(
-    hass: HomeAssistant, auth_domain: str, credential: ClientCredential
-) -> config_entry_oauth2_flow.AbstractOAuth2Implementation:
-    """Return auth implementation for timeular.com."""
-    return OAuth2Impl(
-        hass,
-        auth_domain,
-        credential,
-        AuthorizationServer(
-            authorize_url="https://api.timeular.com/api/v3/developer/sign-in",
-            token_url="https://api.timeular.com/api/v3/developer/api-access"
-        )
+async def async_setup_entry(hass: HomeAssistant, entry):
+    """Set up the Timeular integration from a config entry."""
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setup(entry, "sensor")
     )
+    return True
+
+async def async_unload_entry(hass: HomeAssistant, entry):
+    """Unload a Timeular config entry."""
+    await hass.config_entries.async_forward_entry_unload(entry, "sensor")
+    return True

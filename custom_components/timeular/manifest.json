@@ -1,11 +1,9 @@
 {
-  "codeowners": ["@conallob"],
-  "config_flow": true,
-  "dependencies": [],
-  "documentation": "https://github.com/conallob/homeassistant-timeular/",
   "domain": "timeular",
-  "iot_class": "cloud_polling",
   "name": "Timeular",
-  "requirements": [],
-  "version": "0.0.3"
+  "version": "0.1.0",
+  "documentation": "https://github.com/conallob/homeassistant-timeular/",
+  "requirements": ["requests"],
+  "dependencies": [],
+  "codeowners": ["@conallob"]
 }
