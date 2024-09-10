@@ -1,0 +1,9 @@
+{
+  "domain": "timeular",
+  "name": "Timeular",
+  "version": "0.1.0",
+  "documentation": "https://www.github.com/conallob/homeassistant-timeular",
+  "requirements": ["requests"],
+  "dependencies": [],
+  "codeowners": ["@conallob"]
+}
