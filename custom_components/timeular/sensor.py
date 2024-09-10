@@ -5,16 +5,14 @@ from .const import API_URL
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up the Timeular sensor platform."""
     api_key = entry.data["api_key"]
-    api_secret = entry.data["api_secret"]
-    async_add_entities([TimeularSensor(api_key, api_secret)])
+    async_add_entities([TimeularSensor(api_key)])
 
 class TimeularSensor(Entity):
     """Representation of a Timeular Sensor."""
 
-    def __init__(self, api_key, api_secret):
+    def __init__(self, api_key):
         """Initialize the sensor."""
         self._api_key = api_key
-        self._api_secret = api_secret
         self._state = None
 
     @property
@@ -32,7 +30,7 @@ class TimeularSensor(Entity):
         response = requests.get(
             f"{API_URL}/tracking",
             headers={
-                "Authorization": f"Bearer {self._api_key}:{self._api_secret}"
+                "Authorization": f"Bearer {self._api_key}"
             }
         )
         if response.status_code == 200:
