@@ -15,5 +15,6 @@ class TimeularConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema({
                 vol.Required("api_key"): str,
+                vol.Required("api_secret"): str,
             })
         )
