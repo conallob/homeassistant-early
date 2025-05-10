@@ -1,0 +1,13 @@
+{
+  "domain": "early_app",
+  "name": "Early App",
+  "version": "0.1.0",
+  "documentation": "https://developers.early.app/",
+  "requirements": [
+    "requests"
+  ],
+  "dependencies": [],
+  "codeowners": [
+    "@conallob"
+  ]
+}
