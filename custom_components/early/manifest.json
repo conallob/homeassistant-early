@@ -1,0 +1,16 @@
+{
+  "domain": "early",
+  "name": "EARLY (Timeular)",
+  "version": "0.3.0",
+  "documentation": "https://www.github.com/conallob/homeassistant-early",
+  "requirements": ["requests>=2.31.0"],
+  "dependencies": ["bluetooth"],
+  "codeowners": ["@conallob"],
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "bluetooth": [
+    {
+      "local_name": "Timeular ZEI*"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EARLY (Timeular) Setup",
+        "description": "Enter your EARLY API credentials. You can generate these in your EARLY account settings under 'API & Integrations'.",
+        "data": {
+          "api_key": "API Key",
+          "api_secret": "API Secret"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "EARLY Tracker Discovered",
+        "description": "Do you want to add the {name} Bluetooth tracker to Home Assistant?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to EARLY API. Please check your internet connection and try again.",
+      "invalid_auth": "Invalid API credentials. Please check your API Key and API Secret.",
+      "unknown": "Unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "This EARLY account is already configured."
+    }
+  }
+}
