@@ -56,6 +56,9 @@ async def async_setup_entry(
     # Create the coordinator
     coordinator = EarlyAPICoordinator(hass, api_key, api_secret)
 
+    # Store the coordinator in hass.data for use by switch platform
+    hass.data[DOMAIN][config_entry.entry_id]["coordinator"] = coordinator
+
     # Fetch initial data
     await coordinator.async_update()
 
@@ -179,6 +182,94 @@ class EarlyAPICoordinator:
     def get_activity_name(self, activity_id: str) -> str:
         """Get activity name from activity ID."""
         return self._activities.get(activity_id, "Unknown Activity")
+
+    def get_all_activities(self) -> dict[str, str]:
+        """Return all activities as a dict of {id: name}."""
+        return self._activities
+
+    async def start_tracking(self, activity_id: str) -> None:
+        """Start tracking a specific activity."""
+        try:
+            token = await self._get_token()
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # Build the tracking start endpoint
+            endpoint = f"{API_TRACKING_ENDPOINT}/{activity_id}/start"
+
+            response = await self.hass.async_add_executor_job(
+                lambda: requests.post(
+                    endpoint,
+                    headers=headers,
+                    json={},
+                    timeout=10,
+                )
+            )
+
+            if response.status_code == 401:
+                # Token expired, reset and try again
+                self._token = None
+                token = await self._get_token()
+                headers = {"Authorization": f"Bearer {token}"}
+                response = await self.hass.async_add_executor_job(
+                    lambda: requests.post(
+                        endpoint,
+                        headers=headers,
+                        json={},
+                        timeout=10,
+                    )
+                )
+
+            response.raise_for_status()
+            _LOGGER.debug("Started tracking activity %s", activity_id)
+
+            # Update tracking data immediately
+            await self.async_update()
+
+        except requests.exceptions.RequestException as err:
+            _LOGGER.error("Error starting tracking for activity %s: %s", activity_id, err)
+            raise
+
+    async def stop_tracking(self) -> None:
+        """Stop the current tracking."""
+        try:
+            token = await self._get_token()
+            headers = {"Authorization": f"Bearer {token}"}
+
+            # Build the tracking stop endpoint
+            endpoint = f"{API_TRACKING_ENDPOINT}/stop"
+
+            response = await self.hass.async_add_executor_job(
+                lambda: requests.post(
+                    endpoint,
+                    headers=headers,
+                    json={},
+                    timeout=10,
+                )
+            )
+
+            if response.status_code == 401:
+                # Token expired, reset and try again
+                self._token = None
+                token = await self._get_token()
+                headers = {"Authorization": f"Bearer {token}"}
+                response = await self.hass.async_add_executor_job(
+                    lambda: requests.post(
+                        endpoint,
+                        headers=headers,
+                        json={},
+                        timeout=10,
+                    )
+                )
+
+            response.raise_for_status()
+            _LOGGER.debug("Stopped tracking")
+
+            # Update tracking data immediately
+            await self.async_update()
+
+        except requests.exceptions.RequestException as err:
+            _LOGGER.error("Error stopping tracking: %s", err)
+            raise
 
 
 class EarlyCurrentTrackingSensor(SensorEntity):
