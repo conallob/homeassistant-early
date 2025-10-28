@@ -293,10 +293,10 @@ class EarlyCurrentTrackingSensor(SensorEntity):
             return "idle"
 
         activity = current_tracking.get("activity", {})
-        activity_id = activity.get("id")
+        activity_name = activity.get("name")
 
-        if activity_id:
-            return self._coordinator.get_activity_name(activity_id)
+        if activity_name:
+            return activity_name
 
         return "tracking"
 
