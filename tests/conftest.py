@@ -50,6 +50,24 @@ def mock_bluetooth_config_entry():
 
 
 @pytest.fixture
+def mock_bluetooth_config_entry_with_api():
+    """Return a mock Bluetooth config entry with API credentials."""
+    return ConfigEntry(
+        version=1,
+        domain=DOMAIN,
+        title="EARLY ZEI Tracker",
+        data={
+            "address": "AA:BB:CC:DD:EE:FF",
+            CONF_API_KEY: "test_api_key",
+            CONF_API_SECRET: "test_api_secret",
+        },
+        source="bluetooth",
+        entry_id="test_bt_api_entry_id",
+        unique_id="AA:BB:CC:DD:EE:FF",
+    )
+
+
+@pytest.fixture
 def mock_api_token_response():
     """Return a mock API token response."""
     return {
@@ -66,11 +84,40 @@ def mock_activities_response():
                 "id": "activity_1",
                 "name": "Working",
                 "color": "#FF0000",
+                "deviceSide": 1,
             },
             {
                 "id": "activity_2",
                 "name": "Meeting",
                 "color": "#00FF00",
+                "deviceSide": 2,
+            },
+        ]
+    }
+
+
+@pytest.fixture
+def mock_activities_response_with_unassigned():
+    """Return a mock activities API response with some unassigned activities."""
+    return {
+        "activities": [
+            {
+                "id": "activity_1",
+                "name": "Working",
+                "color": "#FF0000",
+                "deviceSide": 1,
+            },
+            {
+                "id": "activity_2",
+                "name": "Meeting",
+                "color": "#00FF00",
+                "deviceSide": 2,
+            },
+            {
+                "id": "activity_3",
+                "name": "Break",
+                "color": "#0000FF",
+                "deviceSide": None,  # Not assigned to any side
             },
         ]
     }

@@ -347,6 +347,80 @@ class TestEarlyAPICoordinator:
         assert len(activities) == 2
         assert activities["activity_1"] == "Working"
 
+    def test_get_activity_by_device_side(self, mock_hass):
+        """Test getting activity name by device side."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._device_side_mapping = {
+            1: "Working",
+            2: "Meeting",
+            3: "Break",
+        }
+
+        assert coordinator.get_activity_by_device_side(1) == "Working"
+        assert coordinator.get_activity_by_device_side(2) == "Meeting"
+        assert coordinator.get_activity_by_device_side(3) == "Break"
+        assert coordinator.get_activity_by_device_side(4) is None
+        assert coordinator.get_activity_by_device_side(99) is None
+
+    @pytest.mark.asyncio
+    async def test_fetch_activities_with_device_sides(
+        self, mock_hass, mock_api_token_response, mock_activities_response
+    ):
+        """Test fetching activities builds device side mapping."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+
+        # Mock token request
+        token_response = MagicMock()
+        token_response.json.return_value = mock_api_token_response
+        token_response.raise_for_status = MagicMock()
+
+        # Mock activities request
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response
+        activities_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            token_response,
+            activities_response,
+        ]
+
+        await coordinator._fetch_activities()
+
+        assert len(coordinator._activities) == 2
+        assert len(coordinator._device_side_mapping) == 2
+        assert coordinator._device_side_mapping[1] == "Working"
+        assert coordinator._device_side_mapping[2] == "Meeting"
+
+    @pytest.mark.asyncio
+    async def test_fetch_activities_with_unassigned_sides(
+        self, mock_hass, mock_api_token_response, mock_activities_response_with_unassigned
+    ):
+        """Test fetching activities with some unassigned device sides."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+
+        # Mock token request
+        token_response = MagicMock()
+        token_response.json.return_value = mock_api_token_response
+        token_response.raise_for_status = MagicMock()
+
+        # Mock activities request
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response_with_unassigned
+        activities_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            token_response,
+            activities_response,
+        ]
+
+        await coordinator._fetch_activities()
+
+        assert len(coordinator._activities) == 3
+        assert len(coordinator._device_side_mapping) == 2  # Only 2 assigned
+        assert coordinator._device_side_mapping[1] == "Working"
+        assert coordinator._device_side_mapping[2] == "Meeting"
+        assert 3 not in coordinator._device_side_mapping  # Break not assigned
+
 
 class TestEarlyCurrentTrackingSensor:
     """Test the EarlyCurrentTrackingSensor class."""
