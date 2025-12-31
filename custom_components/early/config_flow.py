@@ -97,14 +97,63 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assert self._discovery_info is not None
 
         if user_input is not None:
-            return self.async_create_entry(
-                title=self._discovery_info.name or "EARLY Tracker",
-                data={CONF_ADDRESS: self._discovery_info.address},
-            )
+            # Proceed to API credentials step
+            return await self.async_step_bluetooth_api()
 
         self._set_confirm_only()
         return self.async_show_form(
             step_id="bluetooth_confirm",
+            description_placeholders={
+                "name": self._discovery_info.name or "EARLY Tracker"
+            },
+        )
+
+    async def async_step_bluetooth_api(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Collect API credentials for activity mapping."""
+        assert self._discovery_info is not None
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # If user provided credentials, validate them
+            if user_input.get(CONF_API_KEY) and user_input.get(CONF_API_SECRET):
+                try:
+                    await validate_input(self.hass, user_input)
+                except CannotConnect:
+                    errors["base"] = "cannot_connect"
+                except InvalidAuth:
+                    errors["base"] = "invalid_auth"
+                except Exception:  # pylint: disable=broad-except
+                    _LOGGER.exception("Unexpected exception")
+                    errors["base"] = "unknown"
+                else:
+                    # Valid credentials - create entry with both address and API credentials
+                    return self.async_create_entry(
+                        title=self._discovery_info.name or "EARLY Tracker",
+                        data={
+                            CONF_ADDRESS: self._discovery_info.address,
+                            CONF_API_KEY: user_input[CONF_API_KEY],
+                            CONF_API_SECRET: user_input[CONF_API_SECRET],
+                        },
+                    )
+            else:
+                # No credentials provided - create entry with just address
+                return self.async_create_entry(
+                    title=self._discovery_info.name or "EARLY Tracker",
+                    data={CONF_ADDRESS: self._discovery_info.address},
+                )
+
+        # Show form to collect API credentials (optional)
+        return self.async_show_form(
+            step_id="bluetooth_api",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_API_KEY): str,
+                    vol.Optional(CONF_API_SECRET): str,
+                }
+            ),
+            errors=errors,
             description_placeholders={
                 "name": self._discovery_info.name or "EARLY Tracker"
             },

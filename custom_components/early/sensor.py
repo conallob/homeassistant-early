@@ -82,6 +82,7 @@ class EarlyAPICoordinator:
         self._token: str | None = None
         self._tracking_data: dict[str, Any] | None = None
         self._activities: dict[str, str] = {}
+        self._device_side_mapping: dict[int, str] = {}
 
     async def _get_token(self) -> str:
         """Get authentication token from EARLY API."""
@@ -122,12 +123,23 @@ class EarlyAPICoordinator:
             data = response.json()
 
             # Build a mapping of activity ID to activity name
+            # and device side to activity name
             if "activities" in data:
                 self._activities = {
                     activity["id"]: activity.get("name", "Unknown Activity")
                     for activity in data["activities"]
                 }
-                _LOGGER.debug("Fetched %d activities", len(self._activities))
+
+                # Build device side mapping (orientation -> activity name)
+                self._device_side_mapping = {}
+                for activity in data["activities"]:
+                    device_side = activity.get("deviceSide")
+                    if device_side is not None:
+                        # deviceSide is the orientation number (0-8)
+                        self._device_side_mapping[int(device_side)] = activity.get("name", "Unknown Activity")
+
+                _LOGGER.debug("Fetched %d activities with %d device side mappings",
+                             len(self._activities), len(self._device_side_mapping))
 
         except requests.exceptions.RequestException as err:
             _LOGGER.error("Error fetching EARLY activities: %s", err)
@@ -186,6 +198,10 @@ class EarlyAPICoordinator:
     def get_all_activities(self) -> dict[str, str]:
         """Return all activities as a dict of {id: name}."""
         return self._activities
+
+    def get_activity_by_device_side(self, device_side: int) -> str | None:
+        """Get activity name from device side (orientation)."""
+        return self._device_side_mapping.get(device_side)
 
     async def start_tracking(self, activity_id: str) -> None:
         """Start tracking a specific activity."""
