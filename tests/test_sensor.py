@@ -194,6 +194,56 @@ class TestEarlyAPICoordinator:
         assert coordinator._token == "new_bearer_token"
 
     @pytest.mark.asyncio
+    async def test_token_is_reset_on_401_before_refresh(
+        self,
+        mock_hass,
+        mock_api_token_response,
+        mock_activities_response,
+        mock_tracking_response_active,
+    ):
+        """Test that token is explicitly set to None before refresh on 401."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+
+        # Set initial token
+        coordinator._token = "old_token"
+
+        # Mock activities request
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response
+        activities_response.raise_for_status = MagicMock()
+
+        # Mock tracking request with 401
+        tracking_response_401 = MagicMock()
+        tracking_response_401.status_code = 401
+
+        # Mock new token request
+        new_token_response = MagicMock()
+        new_token_response.json.return_value = {"token": "refreshed_token"}
+        new_token_response.raise_for_status = MagicMock()
+
+        # Mock successful tracking request
+        tracking_response_success = MagicMock()
+        tracking_response_success.status_code = 200
+        tracking_response_success.json.return_value = mock_tracking_response_active
+        tracking_response_success.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            activities_response,
+            tracking_response_401,
+            new_token_response,  # Token refresh
+            tracking_response_success,
+        ]
+
+        # Verify token starts as old_token
+        assert coordinator._token == "old_token"
+
+        await coordinator.async_update()
+
+        # Verify token was refreshed
+        assert coordinator._token == "refreshed_token"
+        assert coordinator.tracking_data == mock_tracking_response_active
+
+    @pytest.mark.asyncio
     async def test_async_update_failure(self, mock_hass, mock_api_token_response):
         """Test update failure."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")

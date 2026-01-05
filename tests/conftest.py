@@ -7,9 +7,12 @@ from homeassistant.const import CONF_API_KEY
 from custom_components.early.const import DOMAIN, CONF_API_SECRET
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def mock_hass():
-    """Return a mock Home Assistant instance."""
+    """Return a mock Home Assistant instance.
+
+    Function-scoped to prevent test pollution from mutable state.
+    """
     hass = MagicMock(spec=HomeAssistant)
     hass.data = {}
     hass.config_entries = MagicMock()
@@ -18,7 +21,7 @@ def mock_hass():
     return hass
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def mock_config_entry():
     """Return a mock config entry."""
     return ConfigEntry(
@@ -35,9 +38,12 @@ def mock_config_entry():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def mock_bluetooth_config_entry():
-    """Return a mock Bluetooth config entry."""
+    """Return a mock Bluetooth config entry.
+
+    Function-scoped as ConfigEntry may be modified in tests.
+    """
     return ConfigEntry(
         version=1,
         domain=DOMAIN,
@@ -49,9 +55,12 @@ def mock_bluetooth_config_entry():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def mock_bluetooth_config_entry_with_api():
-    """Return a mock Bluetooth config entry with API credentials."""
+    """Return a mock Bluetooth config entry with API credentials.
+
+    Function-scoped as ConfigEntry may be modified in tests.
+    """
     return ConfigEntry(
         version=1,
         domain=DOMAIN,
@@ -67,17 +76,23 @@ def mock_bluetooth_config_entry_with_api():
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_api_token_response():
-    """Return a mock API token response."""
+    """Return a mock API token response.
+
+    Session-scoped for performance as this is immutable data.
+    """
     return {
         "token": "mock_bearer_token"
     }
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_activities_response():
-    """Return a mock activities API response."""
+    """Return a mock activities API response.
+
+    Session-scoped for performance as this is immutable data.
+    """
     return {
         "activities": [
             {
@@ -96,9 +111,12 @@ def mock_activities_response():
     }
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_activities_response_with_unassigned():
-    """Return a mock activities API response with some unassigned activities."""
+    """Return a mock activities API response with some unassigned activities.
+
+    Session-scoped for performance as this is immutable data.
+    """
     return {
         "activities": [
             {
@@ -123,9 +141,12 @@ def mock_activities_response_with_unassigned():
     }
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_tracking_response_active():
-    """Return a mock tracking response with active tracking."""
+    """Return a mock tracking response with active tracking.
+
+    Session-scoped for performance as this is immutable data.
+    """
     return {
         "currentTracking": {
             "activity": {
@@ -139,17 +160,23 @@ def mock_tracking_response_active():
     }
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mock_tracking_response_idle():
-    """Return a mock tracking response with no active tracking."""
+    """Return a mock tracking response with no active tracking.
+
+    Session-scoped for performance as this is immutable data.
+    """
     return {
         "currentTracking": None
     }
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def mock_ble_device():
-    """Return a mock BLE device."""
+    """Return a mock BLE device.
+
+    Function-scoped as mocks may have state modified by tests.
+    """
     device = MagicMock()
     device.address = "AA:BB:CC:DD:EE:FF"
     device.name = "Timeular ZEI"
