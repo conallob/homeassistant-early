@@ -45,7 +45,7 @@ class TestIntegrationSetup:
         )
 
         with patch(
-            "custom_components.early.bluetooth.async_register_callback"
+            "homeassistant.components.bluetooth.async_register_callback"
         ) as mock_register:
             mock_register.return_value = MagicMock()
 
@@ -58,6 +58,7 @@ class TestIntegrationSetup:
             mock_hass.config_entries.async_forward_entry_setups.assert_called_once_with(
                 mock_bluetooth_config_entry, [Platform.SENSOR, Platform.SWITCH]
             )
+            mock_register.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_async_setup_entry_existing_domain(self, mock_hass, mock_config_entry):

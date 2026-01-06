@@ -16,44 +16,46 @@ from custom_components.early.sensor import EarlyAPICoordinator
 from custom_components.early.const import DOMAIN
 
 
+@pytest.fixture
+def mock_bluetooth_device_for_sensor(mock_hass, mock_ble_device):
+    """Return a mock Bluetooth device for sensor tests."""
+    service_info = MagicMock()
+    service_info.name = "Timeular ZEI"
+    service_info.address = "AA:BB:CC:DD:EE:FF"
+    service_info.rssi = -50
+    service_info.device = mock_ble_device
+
+    device = EarlyBluetoothDevice(mock_hass, mock_ble_device, service_info)
+    device._orientation = 3
+    return device
+
+
+@pytest.fixture
+def mock_config_entry_bt():
+    """Return a mock Bluetooth config entry."""
+    entry = MagicMock()
+    entry.entry_id = "test_bt_entry"
+    entry.data = {"address": "AA:BB:CC:DD:EE:FF"}
+    return entry
+
+
 class TestEarlyTrackerOrientationSensor:
     """Test the EarlyTrackerOrientationSensor class."""
 
-    @pytest.fixture
-    def mock_bluetooth_device(self, mock_hass, mock_ble_device, mock_service_info):
-        """Return a mock Bluetooth device."""
-        service_info = MagicMock()
-        service_info.name = "Timeular ZEI"
-        service_info.address = "AA:BB:CC:DD:EE:FF"
-        service_info.rssi = -50
-        service_info.device = mock_ble_device
-
-        device = EarlyBluetoothDevice(mock_hass, mock_ble_device, service_info)
-        device._orientation = 3
-        return device
-
-    @pytest.fixture
-    def mock_config_entry_bt(self):
-        """Return a mock Bluetooth config entry."""
-        entry = MagicMock()
-        entry.entry_id = "test_bt_entry"
-        entry.data = {"address": "AA:BB:CC:DD:EE:FF"}
-        return entry
-
-    def test_sensor_initialization(self, mock_bluetooth_device, mock_config_entry_bt):
+    def test_sensor_initialization(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
         """Test sensor initialization."""
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
 
-        assert sensor._device == mock_bluetooth_device
+        assert sensor._device == mock_bluetooth_device_for_sensor
         assert sensor._attr_name == "Timeular ZEI Orientation"
         assert sensor._attr_unique_id == "AA:BB:CC:DD:EE:FF_orientation"
 
-    def test_sensor_device_info(self, mock_bluetooth_device, mock_config_entry_bt):
+    def test_sensor_device_info(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
         """Test sensor device info."""
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
 
         device_info = sensor.device_info
@@ -63,18 +65,18 @@ class TestEarlyTrackerOrientationSensor:
         assert device_info["manufacturer"] == "Timeular"
         assert device_info["model"] == "ZEI Tracker"
 
-    def test_sensor_native_value(self, mock_bluetooth_device, mock_config_entry_bt):
+    def test_sensor_native_value(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
         """Test sensor native value."""
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
 
         assert sensor.native_value == 3
 
-    def test_sensor_attributes(self, mock_bluetooth_device, mock_config_entry_bt):
+    def test_sensor_attributes(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
         """Test sensor attributes."""
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
 
         attributes = sensor.extra_state_attributes
@@ -83,36 +85,36 @@ class TestEarlyTrackerOrientationSensor:
         assert attributes["device_address"] == "AA:BB:CC:DD:EE:FF"
 
     def test_sensor_available_connected(
-        self, mock_bluetooth_device, mock_config_entry_bt
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
     ):
         """Test sensor availability when connected."""
-        mock_bluetooth_device._client = MagicMock()
-        mock_bluetooth_device._client.is_connected = True
+        mock_bluetooth_device_for_sensor._client = MagicMock()
+        mock_bluetooth_device_for_sensor._client.is_connected = True
 
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
 
         assert sensor.available is True
 
     def test_sensor_available_disconnected(
-        self, mock_bluetooth_device, mock_config_entry_bt
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
     ):
         """Test sensor availability when disconnected."""
-        mock_bluetooth_device._client = None
+        mock_bluetooth_device_for_sensor._client = None
 
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
 
         assert sensor.available is False
 
     def test_sensor_handle_orientation_change(
-        self, mock_bluetooth_device, mock_config_entry_bt
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
     ):
         """Test handling orientation change."""
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
         sensor.async_write_ha_state = MagicMock()
 
@@ -122,29 +124,29 @@ class TestEarlyTrackerOrientationSensor:
 
     @pytest.mark.asyncio
     async def test_sensor_will_remove_from_hass(
-        self, mock_bluetooth_device, mock_config_entry_bt
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
     ):
         """Test sensor removal."""
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
-        mock_bluetooth_device.unregister_callback = MagicMock()
+        mock_bluetooth_device_for_sensor.unregister_callback = MagicMock()
 
         await sensor.async_will_remove_from_hass()
 
-        mock_bluetooth_device.unregister_callback.assert_called_once()
+        mock_bluetooth_device_for_sensor.unregister_callback.assert_called_once()
 
     def test_sensor_callback_registration(
-        self, mock_bluetooth_device, mock_config_entry_bt
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
     ):
         """Test callback is registered during initialization."""
-        mock_bluetooth_device.register_callback = MagicMock()
+        mock_bluetooth_device_for_sensor.register_callback = MagicMock()
 
         sensor = EarlyTrackerOrientationSensor(
-            mock_bluetooth_device, mock_config_entry_bt
+            mock_bluetooth_device_for_sensor, mock_config_entry_bt
         )
 
-        mock_bluetooth_device.register_callback.assert_called_once()
+        mock_bluetooth_device_for_sensor.register_callback.assert_called_once()
 
 
 class TestEarlyTrackerRSSISensor:

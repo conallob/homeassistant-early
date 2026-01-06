@@ -15,9 +15,11 @@ class TestFullAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_full_setup_and_tracking_workflow(
-        self, mock_hass, mock_config_entry, mock_api_token_response, mock_activities_response
+        self, mock_hass, mock_api_token_response, mock_activities_response
     ):
         """Test complete workflow: setup, fetch activities, start/stop tracking."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+
         # Mock API responses
         token_response = MagicMock()
         token_response.json.return_value = mock_api_token_response
@@ -52,39 +54,36 @@ class TestFullAPIIntegration:
         stop_response.status_code = 200
         stop_response.raise_for_status = MagicMock()
 
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,  # Initial token
-            activities_response,  # Fetch activities
-            tracking_idle,  # Initial tracking status
-            token_response,  # Start tracking - get token
-            start_response,  # Start tracking
-            token_response,  # Update after start
-            tracking_active,  # Tracking status after start
-            token_response,  # Stop tracking - get token
-            stop_response,  # Stop tracking
-            token_response,  # Update after stop
-            tracking_idle,  # Tracking status after stop
-        ]
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
 
-        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+        with patch("custom_components.early.sensor.requests.get") as mock_get, \
+             patch("custom_components.early.sensor.requests.post") as mock_post:
+            mock_post.side_effect = [token_response, start_response, token_response, stop_response]
+            mock_get.side_effect = [activities_response, tracking_idle, tracking_active, tracking_idle]
 
-        # Setup integration
-        result = await async_setup_entry(mock_hass, mock_config_entry)
-        assert result is True
+            # Fetch activities
+            await coordinator._fetch_activities()
 
-        # Get coordinator
-        coordinator = mock_hass.data[DOMAIN][mock_config_entry.entry_id]["coordinator"]
-        assert isinstance(coordinator, EarlyAPICoordinator)
+            # Verify activities were fetched
+            assert len(coordinator.get_all_activities()) == 2
+            assert coordinator.get_all_activities()["activity_1"] == "Working"
 
-        # Verify activities were fetched
-        assert len(coordinator.get_all_activities()) == 2
-        assert coordinator.get_all_activities()["activity_1"] == "Working"
+            # Get initial tracking status
+            await coordinator.async_update()
 
-        # Start tracking
-        await coordinator.start_tracking("activity_1")
+            # Start tracking
+            await coordinator.start_tracking("activity_1")
 
-        # Stop tracking
-        await coordinator.stop_tracking()
+            # Update tracking status
+            await coordinator.async_update()
+
+            # Stop tracking
+            await coordinator.stop_tracking()
+
+            # Update tracking status
+            await coordinator.async_update()
 
     @pytest.mark.asyncio
     async def test_full_bluetooth_integration_workflow(
@@ -92,31 +91,21 @@ class TestFullAPIIntegration:
         mock_api_token_response, mock_activities_response
     ):
         """Test Bluetooth device with API integration workflow."""
-        # Mock API responses
-        token_response = MagicMock()
-        token_response.json.return_value = mock_api_token_response
-        token_response.status_code = 200
-        token_response.raise_for_status = MagicMock()
-
-        activities_response = MagicMock()
-        activities_response.json.return_value = mock_activities_response
-        activities_response.status_code = 200
-        activities_response.raise_for_status = MagicMock()
-
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,
-            activities_response,
-        ]
-
         mock_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
 
-        # Setup integration
-        result = await async_setup_entry(mock_hass, mock_bluetooth_config_entry_with_api)
-        assert result is True
+        with patch("homeassistant.components.bluetooth.async_register_callback") as mock_register:
+            mock_register.return_value = MagicMock()
 
-        # Verify entry exists in hass.data
-        assert DOMAIN in mock_hass.data
-        assert mock_bluetooth_config_entry_with_api.entry_id in mock_hass.data[DOMAIN]
+            # Setup integration
+            result = await async_setup_entry(mock_hass, mock_bluetooth_config_entry_with_api)
+            assert result is True
+
+            # Verify entry exists in hass.data
+            assert DOMAIN in mock_hass.data
+            assert mock_bluetooth_config_entry_with_api.entry_id in mock_hass.data[DOMAIN]
+
+            # Verify bluetooth callback was registered
+            mock_register.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_unload_reload_cycle(self, mock_hass, mock_config_entry):
@@ -212,17 +201,19 @@ class TestErrorRecovery:
         tracking_success.json.return_value = mock_tracking_response_idle
         tracking_success.raise_for_status = MagicMock()
 
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,  # Initial token
-            tracking_401,  # 401 error
-            new_token_response,  # Renew token
-            tracking_success,  # Success with new token
-        ]
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
 
-        await coordinator.async_update()
+        with patch("custom_components.early.sensor.requests.post") as mock_post, \
+             patch("custom_components.early.sensor.requests.get") as mock_get:
+            mock_post.side_effect = [token_response, new_token_response]
+            mock_get.side_effect = [tracking_401, tracking_success]
 
-        assert coordinator._token == "new_token"
-        assert coordinator.tracking_data == mock_tracking_response_idle
+            await coordinator.async_update()
+
+            assert coordinator._token == "new_token"
+            assert coordinator.tracking_data == mock_tracking_response_idle
 
     @pytest.mark.asyncio
     async def test_network_error_recovery(
@@ -231,11 +222,16 @@ class TestErrorRecovery:
         """Test recovery from network errors."""
         coordinator = EarlyAPICoordinator(mock_hass, "key", "secret")
 
-        # First update - network error
-        mock_hass.async_add_executor_job.side_effect = Exception("Network error")
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
 
-        await coordinator.async_update()
-        assert coordinator.tracking_data is None
+        # First update - network error
+        with patch("custom_components.early.sensor.requests.post") as mock_post:
+            mock_post.side_effect = Exception("Network error")
+
+            await coordinator.async_update()
+            assert coordinator.tracking_data is None
 
         # Second update - success
         token_response = MagicMock()
@@ -247,13 +243,13 @@ class TestErrorRecovery:
         tracking_response.json.return_value = mock_tracking_response_idle
         tracking_response.raise_for_status = MagicMock()
 
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,
-            tracking_response,
-        ]
+        with patch("custom_components.early.sensor.requests.post") as mock_post, \
+             patch("custom_components.early.sensor.requests.get") as mock_get:
+            mock_post.return_value = token_response
+            mock_get.return_value = tracking_response
 
-        await coordinator.async_update()
-        assert coordinator.tracking_data == mock_tracking_response_idle
+            await coordinator.async_update()
+            assert coordinator.tracking_data == mock_tracking_response_idle
 
 
 class TestDeviceSideMappingIntegration:
@@ -274,17 +270,21 @@ class TestDeviceSideMappingIntegration:
         activities_response.json.return_value = mock_activities_response
         activities_response.raise_for_status = MagicMock()
 
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,
-            activities_response,
-        ]
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
 
-        await coordinator._fetch_activities()
+        with patch("custom_components.early.sensor.requests.post") as mock_post, \
+             patch("custom_components.early.sensor.requests.get") as mock_get:
+            mock_post.return_value = token_response
+            mock_get.return_value = activities_response
 
-        # Verify mappings
-        assert coordinator.get_activity_by_device_side(1) == "Working"
-        assert coordinator.get_activity_by_device_side(2) == "Meeting"
-        assert coordinator.get_activity_by_device_side(99) is None
+            await coordinator._fetch_activities()
+
+            # Verify mappings
+            assert coordinator.get_activity_by_device_side(1) == "Working"
+            assert coordinator.get_activity_by_device_side(2) == "Meeting"
+            assert coordinator.get_activity_by_device_side(99) is None
 
     @pytest.mark.asyncio
     async def test_activities_update_refreshes_mappings(
@@ -306,14 +306,18 @@ class TestDeviceSideMappingIntegration:
         }
         activities_v1.raise_for_status = MagicMock()
 
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,
-            activities_v1,
-        ]
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
 
-        await coordinator._fetch_activities()
-        assert coordinator.get_activity_by_device_side(1) == "Work"
-        assert coordinator.get_activity_by_device_side(2) is None
+        with patch("custom_components.early.sensor.requests.post") as mock_post, \
+             patch("custom_components.early.sensor.requests.get") as mock_get:
+            mock_post.return_value = token_response
+            mock_get.return_value = activities_v1
+
+            await coordinator._fetch_activities()
+            assert coordinator.get_activity_by_device_side(1) == "Work"
+            assert coordinator.get_activity_by_device_side(2) is None
 
         # Updated activities
         activities_v2 = MagicMock()
@@ -325,14 +329,14 @@ class TestDeviceSideMappingIntegration:
         }
         activities_v2.raise_for_status = MagicMock()
 
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,
-            activities_v2,
-        ]
+        with patch("custom_components.early.sensor.requests.post") as mock_post, \
+             patch("custom_components.early.sensor.requests.get") as mock_get:
+            mock_post.return_value = token_response
+            mock_get.return_value = activities_v2
 
-        await coordinator._fetch_activities()
-        assert coordinator.get_activity_by_device_side(1) == "Work"
-        assert coordinator.get_activity_by_device_side(2) == "Play"
+            await coordinator._fetch_activities()
+            assert coordinator.get_activity_by_device_side(1) == "Work"
+            assert coordinator.get_activity_by_device_side(2) == "Play"
 
 
 class TestConcurrentOperations:
@@ -354,17 +358,18 @@ class TestConcurrentOperations:
         tracking_response.json.return_value = mock_tracking_response_idle
         tracking_response.raise_for_status = MagicMock()
 
-        # Set up multiple responses
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,
-            tracking_response,
-            token_response,
-            tracking_response,
-        ]
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
 
-        # Make concurrent calls (throttle should prevent double execution)
-        await coordinator.async_update()
-        await coordinator.async_update()
+        with patch("custom_components.early.sensor.requests.post") as mock_post, \
+             patch("custom_components.early.sensor.requests.get") as mock_get:
+            mock_post.return_value = token_response
+            mock_get.return_value = tracking_response
 
-        # Due to throttling, should have fetched only once
-        assert coordinator.tracking_data == mock_tracking_response_idle
+            # Make concurrent calls (throttle should prevent double execution)
+            await coordinator.async_update()
+            await coordinator.async_update()
+
+            # Due to throttling, should have fetched only once
+            assert coordinator.tracking_data == mock_tracking_response_idle

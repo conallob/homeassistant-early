@@ -253,15 +253,19 @@ class TestEarlyAPICoordinator:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
+
         # Mock tracking request failure
-        mock_hass.async_add_executor_job.side_effect = [
-            token_response,
-            Exception("Network error"),
-        ]
+        with patch("custom_components.early.sensor.requests.post") as mock_post, \
+             patch("custom_components.early.sensor.requests.get") as mock_get:
+            mock_post.return_value = token_response
+            mock_get.side_effect = Exception("Network error")
 
-        await coordinator.async_update()
+            await coordinator.async_update()
 
-        assert coordinator.tracking_data is None
+            assert coordinator.tracking_data is None
 
     @pytest.mark.asyncio
     async def test_start_tracking(
@@ -603,7 +607,7 @@ class TestSensorPlatformSetup:
         with patch(
             "custom_components.early.sensor.EarlyAPICoordinator.async_update"
         ) as mock_update:
-            mock_update.return_value = None
+            mock_update.return_value = AsyncMock()
 
             await async_setup_entry(mock_hass, mock_config_entry, async_add_entities)
 
