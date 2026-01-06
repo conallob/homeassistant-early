@@ -144,6 +144,7 @@ class TestFullAPIIntegration:
         """Test multiple config entries can coexist."""
         entry1 = ConfigEntry(
             version=1,
+            minor_version=1,
             domain=DOMAIN,
             title="EARLY Account 1",
             data={
@@ -157,6 +158,7 @@ class TestFullAPIIntegration:
 
         entry2 = ConfigEntry(
             version=1,
+            minor_version=1,
             domain=DOMAIN,
             title="EARLY Account 2",
             data={

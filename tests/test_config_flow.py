@@ -18,7 +18,7 @@ class TestConfigFlow:
     """Test the config flow."""
 
     @pytest.mark.asyncio
-    async def test_validate_input_success(self, mock_api_token_response):
+    async def test_validate_input_success(self, mock_hass, mock_api_token_response):
         """Test validate_input with successful authentication."""
         with patch("requests.post") as mock_post:
             mock_response = MagicMock()
@@ -30,13 +30,13 @@ class TestConfigFlow:
                 CONF_API_KEY: "valid_key",
                 CONF_API_SECRET: "valid_secret",
             }
-            result = await validate_input(data)
+            result = await validate_input(mock_hass, data)
 
             assert result == {"title": "EARLY"}
             mock_post.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_validate_input_invalid_auth(self):
+    async def test_validate_input_invalid_auth(self, mock_hass):
         """Test validate_input with invalid credentials."""
         with patch("requests.post") as mock_post:
             mock_response = MagicMock()
@@ -49,10 +49,10 @@ class TestConfigFlow:
             }
 
             with pytest.raises(InvalidAuth):
-                await validate_input(data)
+                await validate_input(mock_hass, data)
 
     @pytest.mark.asyncio
-    async def test_validate_input_cannot_connect(self):
+    async def test_validate_input_cannot_connect(self, mock_hass):
         """Test validate_input with connection error."""
         with patch("requests.post") as mock_post:
             mock_post.side_effect = Exception("Connection failed")
@@ -63,10 +63,10 @@ class TestConfigFlow:
             }
 
             with pytest.raises(CannotConnect):
-                await validate_input(data)
+                await validate_input(mock_hass, data)
 
     @pytest.mark.asyncio
-    async def test_validate_input_http_error(self):
+    async def test_validate_input_http_error(self, mock_hass):
         """Test validate_input with HTTP error."""
         with patch("requests.post") as mock_post:
             mock_response = MagicMock()
@@ -80,7 +80,7 @@ class TestConfigFlow:
             }
 
             with pytest.raises(CannotConnect):
-                await validate_input(data)
+                await validate_input(mock_hass, data)
 
     @pytest.mark.asyncio
     async def test_form_user_step(self, mock_hass):

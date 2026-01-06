@@ -26,6 +26,7 @@ def mock_config_entry():
     """Return a mock config entry."""
     return ConfigEntry(
         version=1,
+        minor_version=1,
         domain=DOMAIN,
         title="EARLY",
         data={
@@ -46,6 +47,7 @@ def mock_bluetooth_config_entry():
     """
     return ConfigEntry(
         version=1,
+        minor_version=1,
         domain=DOMAIN,
         title="EARLY ZEI Tracker",
         data={"address": "AA:BB:CC:DD:EE:FF"},
@@ -63,6 +65,7 @@ def mock_bluetooth_config_entry_with_api():
     """
     return ConfigEntry(
         version=1,
+        minor_version=1,
         domain=DOMAIN,
         title="EARLY ZEI Tracker",
         data={
