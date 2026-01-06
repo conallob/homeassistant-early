@@ -20,11 +20,15 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_validate_input_success(self, mock_hass, mock_api_token_response):
         """Test validate_input with successful authentication."""
-        with patch("requests.post") as mock_post:
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_api_token_response
+            mock_response.raise_for_status = MagicMock()
             mock_post.return_value = mock_response
+
+            # Make async_add_executor_job execute the lambda immediately
+            mock_hass.async_add_executor_job = lambda func: func()
 
             data = {
                 CONF_API_KEY: "valid_key",
@@ -38,10 +42,14 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_validate_input_invalid_auth(self, mock_hass):
         """Test validate_input with invalid credentials."""
-        with patch("requests.post") as mock_post:
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 401
+            mock_response.raise_for_status.side_effect = Exception("Unauthorized")
             mock_post.return_value = mock_response
+
+            # Make async_add_executor_job execute the lambda immediately
+            mock_hass.async_add_executor_job = lambda func: func()
 
             data = {
                 CONF_API_KEY: "invalid_key",
@@ -54,8 +62,11 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_validate_input_cannot_connect(self, mock_hass):
         """Test validate_input with connection error."""
-        with patch("requests.post") as mock_post:
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_post.side_effect = Exception("Connection failed")
+
+            # Make async_add_executor_job execute the lambda immediately
+            mock_hass.async_add_executor_job = lambda func: func()
 
             data = {
                 CONF_API_KEY: "test_key",
@@ -68,11 +79,14 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_validate_input_http_error(self, mock_hass):
         """Test validate_input with HTTP error."""
-        with patch("requests.post") as mock_post:
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 500
             mock_response.raise_for_status.side_effect = Exception("Server error")
             mock_post.return_value = mock_response
+
+            # Make async_add_executor_job execute the lambda immediately
+            mock_hass.async_add_executor_job = lambda func: func()
 
             data = {
                 CONF_API_KEY: "test_key",
