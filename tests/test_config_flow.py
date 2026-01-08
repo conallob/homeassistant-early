@@ -66,8 +66,10 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_validate_input_cannot_connect(self, mock_hass):
         """Test validate_input with connection error."""
+        import requests as req_module
+
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
-            mock_post.side_effect = Exception("Connection failed")
+            mock_post.side_effect = req_module.exceptions.ConnectionError("Connection failed")
 
             # Make async_add_executor_job execute the lambda immediately
             async def mock_executor(func):
@@ -85,10 +87,12 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_validate_input_http_error(self, mock_hass):
         """Test validate_input with HTTP error."""
+        import requests as req_module
+
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 500
-            mock_response.raise_for_status.side_effect = Exception("Server error")
+            mock_response.raise_for_status.side_effect = req_module.exceptions.HTTPError("Server error")
             mock_post.return_value = mock_response
 
             # Make async_add_executor_job execute the lambda immediately
@@ -109,6 +113,7 @@ class TestConfigFlow:
         """Test we get the form for user step."""
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
         result = await flow.async_step_user()
 
@@ -121,11 +126,17 @@ class TestConfigFlow:
         """Test successful user step creates entry."""
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
-        with patch("requests.post") as mock_post:
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
+
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_api_token_response
+            mock_response.raise_for_status = MagicMock()
             mock_post.return_value = mock_response
 
             result = await flow.async_step_user(
@@ -136,7 +147,7 @@ class TestConfigFlow:
             )
 
             assert result["type"] == FlowResultType.CREATE_ENTRY
-            assert result["title"] == "EARLY"
+            assert result["title"] == "EARLY Time Tracking"
             assert result["data"] == {
                 CONF_API_KEY: "test_key",
                 CONF_API_SECRET: "test_secret",
@@ -166,11 +177,18 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_form_user_cannot_connect(self, mock_hass):
         """Test cannot connect error in user step."""
+        import requests as req_module
+
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
-        with patch("requests.post") as mock_post:
-            mock_post.side_effect = Exception("Connection failed")
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
+
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
+            mock_post.side_effect = req_module.exceptions.ConnectionError("Connection failed")
 
             result = await flow.async_step_user(
                 user_input={
@@ -207,6 +225,7 @@ class TestConfigFlow:
         """Test bluetooth step with device found."""
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
         # Create a mock discovery info
         discovery_info = MagicMock()
@@ -214,18 +233,19 @@ class TestConfigFlow:
         discovery_info.address = "AA:BB:CC:DD:EE:FF"
 
         # Mock the unique_id check
-        flow._async_current_entries = MagicMock(return_value=[])
+        with patch.object(flow, '_abort_if_unique_id_configured'):
+            with patch.object(flow, 'async_set_unique_id'):
+                result = await flow.async_step_bluetooth(discovery_info)
 
-        result = await flow.async_step_bluetooth(discovery_info)
-
-        assert result["type"] == FlowResultType.FORM
-        assert result["step_id"] == "bluetooth_confirm"
+                assert result["type"] == FlowResultType.FORM
+                assert result["step_id"] == "bluetooth_confirm"
 
     @pytest.mark.asyncio
     async def test_bluetooth_confirm_proceeds_to_api_step(self, mock_hass):
         """Test bluetooth confirmation proceeds to API credentials step."""
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
         # Set up discovery info
         discovery_info = MagicMock()
@@ -243,6 +263,7 @@ class TestConfigFlow:
         """Test bluetooth confirmation shows form when no user input."""
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
         # Set up discovery info
         discovery_info = MagicMock()
@@ -250,10 +271,11 @@ class TestConfigFlow:
         discovery_info.address = "AA:BB:CC:DD:EE:FF"
         flow._discovery_info = discovery_info
 
-        result = await flow.async_step_bluetooth_confirm(user_input=None)
+        with patch.object(flow, '_set_confirm_only'):
+            result = await flow.async_step_bluetooth_confirm(user_input=None)
 
-        assert result["type"] == FlowResultType.FORM
-        assert result["step_id"] == "bluetooth_confirm"
+            assert result["type"] == FlowResultType.FORM
+            assert result["step_id"] == "bluetooth_confirm"
 
     @pytest.mark.asyncio
     async def test_bluetooth_unique_id_already_configured(
@@ -262,23 +284,21 @@ class TestConfigFlow:
         """Test bluetooth setup aborts if device already configured."""
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
         # Create a mock discovery info
         discovery_info = MagicMock()
         discovery_info.name = "Timeular ZEI"
         discovery_info.address = "AA:BB:CC:DD:EE:FF"
 
-        # Mock existing entry with same unique_id
-        existing_entry = MagicMock()
-        existing_entry.unique_id = "AA:BB:CC:DD:EE:FF"
+        # Mock to test that uniqueness check is performed
+        with patch.object(flow, 'async_set_unique_id') as mock_set_unique:
+            with patch.object(flow, '_abort_if_unique_id_configured') as mock_abort:
+                result = await flow.async_step_bluetooth(discovery_info)
 
-        flow._async_current_entries = MagicMock(return_value=[existing_entry])
-        flow._abort_if_unique_id_configured = MagicMock()
-
-        result = await flow.async_step_bluetooth(discovery_info)
-
-        # Should call abort check
-        flow._abort_if_unique_id_configured.assert_called_once()
+                # Should call the uniqueness checks
+                mock_set_unique.assert_called_once_with(discovery_info.address)
+                mock_abort.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_bluetooth_api_step_shows_form(self, mock_hass, mock_ble_device):
@@ -378,8 +398,11 @@ class TestConfigFlow:
     @pytest.mark.asyncio
     async def test_bluetooth_api_cannot_connect(self, mock_hass):
         """Test bluetooth API step with connection error."""
+        import requests as req_module
+
         flow = ConfigFlow()
         flow.hass = mock_hass
+        mock_hass.config_entries = MagicMock()
 
         # Create discovery info with proper attributes
         discovery_info = MagicMock()
@@ -388,7 +411,7 @@ class TestConfigFlow:
         flow._discovery_info = discovery_info
 
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
-            mock_post.side_effect = Exception("Connection failed")
+            mock_post.side_effect = req_module.exceptions.ConnectionError("Connection failed")
 
             async def mock_executor(func):
                 return func()

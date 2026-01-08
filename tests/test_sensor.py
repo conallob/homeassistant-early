@@ -246,7 +246,10 @@ class TestEarlyAPICoordinator:
     @pytest.mark.asyncio
     async def test_async_update_failure(self, mock_hass, mock_api_token_response):
         """Test update failure."""
+        import requests as req_module
+
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"test_id": "Test Activity"}
 
         # Mock token request
         token_response = MagicMock()
@@ -261,7 +264,7 @@ class TestEarlyAPICoordinator:
         with patch("custom_components.early.sensor.requests.post") as mock_post, \
              patch("custom_components.early.sensor.requests.get") as mock_get:
             mock_post.return_value = token_response
-            mock_get.side_effect = Exception("Network error")
+            mock_get.side_effect = req_module.exceptions.ConnectionError("Network error")
 
             await coordinator.async_update()
 
@@ -605,10 +608,9 @@ class TestSensorPlatformSetup:
         async_add_entities = AsyncMock()
 
         with patch(
-            "custom_components.early.sensor.EarlyAPICoordinator.async_update"
+            "custom_components.early.sensor.EarlyAPICoordinator.async_update",
+            new_callable=AsyncMock
         ) as mock_update:
-            mock_update.return_value = AsyncMock()
-
             await async_setup_entry(mock_hass, mock_config_entry, async_add_entities)
 
             async_add_entities.assert_called_once()

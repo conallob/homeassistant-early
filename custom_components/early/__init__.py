@@ -59,13 +59,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     # Disconnect from any bluetooth devices
-    if entry.entry_id in hass.data[DOMAIN]:
+    if entry.entry_id in hass.data.get(DOMAIN, {}):
         bluetooth_devices = hass.data[DOMAIN][entry.entry_id].get("bluetooth_devices", {})
         for device in bluetooth_devices.values():
             if isinstance(device, EarlyBluetoothDevice):
                 await device.disconnect()
 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok

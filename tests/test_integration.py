@@ -180,6 +180,8 @@ class TestErrorRecovery:
     ):
         """Test coordinator handles token expiry and renews."""
         coordinator = EarlyAPICoordinator(mock_hass, "key", "secret")
+        # Pre-populate activities so _fetch_activities() isn't called
+        coordinator._activities = {"test_id": "Test Activity"}
 
         # First call - get token
         token_response = MagicMock()
@@ -220,7 +222,10 @@ class TestErrorRecovery:
         self, mock_hass, mock_api_token_response, mock_tracking_response_idle
     ):
         """Test recovery from network errors."""
+        import requests as req_module
+
         coordinator = EarlyAPICoordinator(mock_hass, "key", "secret")
+        coordinator._activities = {"test_id": "Test Activity"}
 
         async def mock_executor(func):
             return func()
@@ -228,7 +233,7 @@ class TestErrorRecovery:
 
         # First update - network error
         with patch("custom_components.early.sensor.requests.post") as mock_post:
-            mock_post.side_effect = Exception("Network error")
+            mock_post.side_effect = req_module.exceptions.ConnectionError("Network error")
 
             await coordinator.async_update()
             assert coordinator.tracking_data is None
