@@ -1,6 +1,8 @@
 """Test the EARLY Bluetooth support."""
+
+from unittest.mock import AsyncMock, MagicMock, call, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch, call
 from bleak.exc import BleakError
 
 from custom_components.early.bluetooth import (
@@ -96,10 +98,14 @@ class TestEarlyBluetoothDevice:
         device.register_callback(callback1)
         device.register_callback(callback2)
 
-        # Should not raise exception, but callback2 might not be called
-        # depending on implementation
-        with pytest.raises(Exception):
+        # When first callback raises exception, it should propagate
+        # and subsequent callbacks won't be called
+        with pytest.raises(Exception, match="Callback error"):
             device._fire_callbacks()
+
+        # Verify first callback was called but second was not
+        callback1.assert_called_once()
+        callback2.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_connect_success(
@@ -131,9 +137,7 @@ class TestEarlyBluetoothDevice:
             mock_client.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_connect_failure(
-        self, mock_hass, mock_ble_device, mock_service_info
-    ):
+    async def test_connect_failure(self, mock_hass, mock_ble_device, mock_service_info):
         """Test connection failure."""
         device = EarlyBluetoothDevice(mock_hass, mock_ble_device, mock_service_info)
 
@@ -182,7 +186,9 @@ class TestEarlyBluetoothDevice:
         await device.connect()
 
         # Mock disconnect failure
-        device._client.disconnect = AsyncMock(side_effect=BleakError("Disconnect failed"))
+        device._client.disconnect = AsyncMock(
+            side_effect=BleakError("Disconnect failed")
+        )
 
         # Should not raise exception
         await device.disconnect()

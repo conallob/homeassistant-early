@@ -1,4 +1,5 @@
 """Config flow for EARLY (Timeular) integration."""
+
 from __future__ import annotations
 
 import logging
@@ -6,7 +7,6 @@ from typing import Any
 
 import requests
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
@@ -16,11 +16,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .bluetooth import EarlyBluetoothDevice
-from .const import (
-    DOMAIN,
-    CONF_API_SECRET,
-    API_SIGN_IN_ENDPOINT,
-)
+from .const import API_SIGN_IN_ENDPOINT, CONF_API_SECRET, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,14 +93,71 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         assert self._discovery_info is not None
 
         if user_input is not None:
-            return self.async_create_entry(
-                title=self._discovery_info.name or "EARLY Tracker",
-                data={CONF_ADDRESS: self._discovery_info.address},
-            )
+            # Proceed to API credentials step
+            return await self.async_step_bluetooth_api()
 
         self._set_confirm_only()
         return self.async_show_form(
             step_id="bluetooth_confirm",
+            description_placeholders={
+                "name": self._discovery_info.name or "EARLY Tracker"
+            },
+        )
+
+    async def async_step_bluetooth_api(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Collect API credentials for activity mapping."""
+        assert self._discovery_info is not None
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            api_key = user_input.get(CONF_API_KEY)
+            api_secret = user_input.get(CONF_API_SECRET)
+
+            if api_key or api_secret:
+                # User filled in at least one field — both are required together
+                if not (api_key and api_secret):
+                    errors["base"] = "missing_credentials"
+                else:
+                    try:
+                        await validate_input(self.hass, user_input)
+                    except CannotConnect:
+                        errors["base"] = "cannot_connect"
+                    except InvalidAuth:
+                        errors["base"] = "invalid_auth"
+                    except Exception:  # pylint: disable=broad-except
+                        _LOGGER.exception("Unexpected exception")
+                        errors["base"] = "unknown"
+                    else:
+                        # Address goes in data (connection identity);
+                        # credentials go in options so HA can encrypt them
+                        # separately from immutable connection parameters.
+                        return self.async_create_entry(
+                            title=self._discovery_info.name or "EARLY Tracker",
+                            data={CONF_ADDRESS: self._discovery_info.address},
+                            options={
+                                CONF_API_KEY: api_key,
+                                CONF_API_SECRET: api_secret,
+                            },
+                        )
+            else:
+                # Neither field filled — skip API credentials
+                return self.async_create_entry(
+                    title=self._discovery_info.name or "EARLY Tracker",
+                    data={CONF_ADDRESS: self._discovery_info.address},
+                )
+
+        # Show form to collect API credentials (optional)
+        return self.async_show_form(
+            step_id="bluetooth_api",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_API_KEY): str,
+                    vol.Optional(CONF_API_SECRET): str,
+                }
+            ),
+            errors=errors,
             description_placeholders={
                 "name": self._discovery_info.name or "EARLY Tracker"
             },

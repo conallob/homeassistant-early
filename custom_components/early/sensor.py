@@ -1,35 +1,37 @@
 """Platform for EARLY (Timeular) sensor integration."""
+
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import Throttle
+from homeassistant.util.dt import utcnow
 
 from .const import (
+    API_ACTIVITIES_ENDPOINT,
+    API_SIGN_IN_ENDPOINT,
+    API_TRACKING_ENDPOINT,
+    ATTR_ACTIVITY_ID,
+    ATTR_ACTIVITY_NAME,
+    ATTR_NOTE,
+    ATTR_STARTED_AT,
     CONF_API_SECRET,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    API_SIGN_IN_ENDPOINT,
-    API_TRACKING_ENDPOINT,
-    API_ACTIVITIES_ENDPOINT,
-    ATTR_ACTIVITY_ID,
-    ATTR_ACTIVITY_NAME,
-    ATTR_STARTED_AT,
-    ATTR_NOTE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=DEFAULT_SCAN_INTERVAL)
+ACTIVITIES_REFRESH_INTERVAL = timedelta(hours=1)
 
 
 async def async_setup_entry(
@@ -42,6 +44,7 @@ async def async_setup_entry(
     if "address" in config_entry.data:
         # This is a Bluetooth device - delegate to bluetooth_sensor
         from .bluetooth_sensor import async_setup_bluetooth_entry
+
         await async_setup_bluetooth_entry(hass, config_entry, async_add_entities)
         return
 
@@ -82,6 +85,8 @@ class EarlyAPICoordinator:
         self._token: str | None = None
         self._tracking_data: dict[str, Any] | None = None
         self._activities: dict[str, str] = {}
+        self._device_side_mapping: dict[int, str] = {}
+        self._activities_last_fetch: datetime | None = None
 
     async def _get_token(self) -> str:
         """Get authentication token from EARLY API."""
@@ -98,7 +103,12 @@ class EarlyAPICoordinator:
             )
             response.raise_for_status()
             data = response.json()
-            self._token = data.get("token")
+            token = data.get("token")
+            if not token:
+                raise requests.exceptions.HTTPError(
+                    "API returned 200 but response contained no token"
+                )
+            self._token = token
             _LOGGER.debug("Successfully obtained EARLY API token")
             return self._token
         except requests.exceptions.RequestException as err:
@@ -122,15 +132,36 @@ class EarlyAPICoordinator:
             data = response.json()
 
             # Build a mapping of activity ID to activity name
+            # and device side to activity name
             if "activities" in data:
                 self._activities = {
                     activity["id"]: activity.get("name", "Unknown Activity")
                     for activity in data["activities"]
                 }
-                _LOGGER.debug("Fetched %d activities", len(self._activities))
+
+                # Build device side mapping (orientation -> activity name)
+                self._device_side_mapping = {}
+                for activity in data["activities"]:
+                    device_side = activity.get("deviceSide")
+                    if device_side is not None:
+                        # deviceSide is the orientation number (0-8)
+                        self._device_side_mapping[int(device_side)] = activity.get(
+                            "name", "Unknown Activity"
+                        )
+
+                self._activities_last_fetch = utcnow()
+                _LOGGER.debug(
+                    "Fetched %d activities with %d device side mappings",
+                    len(self._activities),
+                    len(self._device_side_mapping),
+                )
 
         except requests.exceptions.RequestException as err:
             _LOGGER.error("Error fetching EARLY activities: %s", err)
+
+    async def async_fetch_activities(self) -> None:
+        """Fetch activities from the API (public wrapper for external callers)."""
+        await self._fetch_activities()
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def async_update(self) -> None:
@@ -139,8 +170,13 @@ class EarlyAPICoordinator:
             token = await self._get_token()
             headers = {"Authorization": f"Bearer {token}"}
 
-            # Fetch activities if we don't have them yet
-            if not self._activities:
+            # Refresh activities at startup and at most once per hour
+            activities_stale = (
+                not self._activities
+                or self._activities_last_fetch is None
+                or utcnow() - self._activities_last_fetch > ACTIVITIES_REFRESH_INTERVAL
+            )
+            if activities_stale:
                 await self._fetch_activities()
 
             # Fetch current tracking status
@@ -187,6 +223,10 @@ class EarlyAPICoordinator:
         """Return all activities as a dict of {id: name}."""
         return self._activities
 
+    def get_activity_by_device_side(self, device_side: int) -> str | None:
+        """Get activity name from device side (orientation)."""
+        return self._device_side_mapping.get(device_side)
+
     async def start_tracking(self, activity_id: str) -> None:
         """Start tracking a specific activity."""
         try:
@@ -226,7 +266,9 @@ class EarlyAPICoordinator:
             await self.async_update()
 
         except requests.exceptions.RequestException as err:
-            _LOGGER.error("Error starting tracking for activity %s: %s", activity_id, err)
+            _LOGGER.error(
+                "Error starting tracking for activity %s: %s", activity_id, err
+            )
             raise
 
     async def stop_tracking(self) -> None:

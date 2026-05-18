@@ -12,11 +12,20 @@
       "bluetooth_confirm": {
         "title": "EARLY Tracker Discovered",
         "description": "Do you want to add the {name} Bluetooth tracker to Home Assistant?"
+      },
+      "bluetooth_api": {
+        "title": "EARLY API Credentials (Optional)",
+        "description": "To display activity names for {name}, provide your EARLY API credentials. You can skip this step to only track orientation. API credentials can be generated in your EARLY account settings under 'API & Integrations'.",
+        "data": {
+          "api_key": "API Key (Optional)",
+          "api_secret": "API Secret (Optional)"
+        }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to EARLY API. Please check your internet connection and try again.",
       "invalid_auth": "Invalid API credentials. Please check your API Key and API Secret.",
+      "missing_credentials": "Both API Key and API Secret are required. Leave both blank to skip API setup.",
       "unknown": "Unexpected error occurred. Please try again."
     },
     "abort": {

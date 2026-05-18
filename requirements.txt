@@ -1,0 +1,3 @@
+# Runtime dependencies for EARLY Home Assistant integration
+# These match the requirements specified in custom_components/early/manifest.json
+requests>=2.31.0

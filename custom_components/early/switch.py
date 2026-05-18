@@ -1,4 +1,5 @@
 """Platform for EARLY (Timeular) switch integration."""
+
 from __future__ import annotations
 
 import logging
@@ -63,9 +64,7 @@ async def async_setup_entry(
 class EarlyActivitySwitch(SwitchEntity):
     """Representation of an EARLY activity switch."""
 
-    def __init__(
-        self, coordinator: Any, activity_id: str, activity_name: str
-    ) -> None:
+    def __init__(self, coordinator: Any, activity_id: str, activity_name: str) -> None:
         """Initialize the switch."""
         self._coordinator = coordinator
         self._activity_id = activity_id
