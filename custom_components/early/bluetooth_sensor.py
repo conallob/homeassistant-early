@@ -4,6 +4,8 @@ from __future__ import annotations
 import logging
 from typing import Any, TYPE_CHECKING
 
+import requests
+
 from homeassistant.components import bluetooth
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
@@ -55,10 +57,11 @@ async def async_setup_bluetooth_entry(
     # Store the device in hass data
     hass.data[DOMAIN][config_entry.entry_id]["bluetooth_devices"][address] = ble_device
 
-    # Check if we have API credentials to fetch activity mappings
+    # Check if we have API credentials to fetch activity mappings.
+    # Credentials live in options (not data) so HA can handle them separately.
     coordinator = None
-    api_key = config_entry.data.get(CONF_API_KEY)
-    api_secret = config_entry.data.get(CONF_API_SECRET)
+    api_key = config_entry.options.get(CONF_API_KEY)
+    api_secret = config_entry.options.get(CONF_API_SECRET)
 
     if api_key and api_secret:
         # Import here to avoid circular dependency
@@ -69,10 +72,12 @@ async def async_setup_bluetooth_entry(
         try:
             await coordinator.async_fetch_activities()
             hass.data[DOMAIN][config_entry.entry_id]["coordinator"] = coordinator
-        except Exception:
+        except requests.exceptions.RequestException as err:
             _LOGGER.warning(
-                "Failed to fetch activities for %s; activity sensor will be unavailable",
+                "Network error fetching activities for %s: %s; "
+                "activity name sensor will be unavailable",
                 address,
+                err,
             )
             coordinator = None
 

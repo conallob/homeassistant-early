@@ -350,8 +350,10 @@ class TestConfigFlow:
             assert result["type"] == FlowResultType.CREATE_ENTRY
             assert result["title"] == "Timeular ZEI"
             assert result["data"]["address"] == "AA:BB:CC:DD:EE:FF"
-            assert result["data"][CONF_API_KEY] == "test_key"
-            assert result["data"][CONF_API_SECRET] == "test_secret"
+            # Credentials must be in options, not data, to allow HA encryption
+            assert CONF_API_KEY not in result["data"]
+            assert result["options"][CONF_API_KEY] == "test_key"
+            assert result["options"][CONF_API_SECRET] == "test_secret"
 
     @pytest.mark.asyncio
     async def test_bluetooth_api_without_credentials(self, mock_hass):

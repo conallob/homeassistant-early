@@ -134,10 +134,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         _LOGGER.exception("Unexpected exception")
                         errors["base"] = "unknown"
                     else:
+                        # Address goes in data (connection identity);
+                        # credentials go in options so HA can encrypt them
+                        # separately from immutable connection parameters.
                         return self.async_create_entry(
                             title=self._discovery_info.name or "EARLY Tracker",
-                            data={
-                                CONF_ADDRESS: self._discovery_info.address,
+                            data={CONF_ADDRESS: self._discovery_info.address},
+                            options={
                                 CONF_API_KEY: api_key,
                                 CONF_API_SECRET: api_secret,
                             },

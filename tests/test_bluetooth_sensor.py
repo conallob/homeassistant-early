@@ -234,6 +234,7 @@ class TestBluetoothSensorPlatformSetup:
         config_entry = MagicMock()
         config_entry.entry_id = "test_bt_entry"
         config_entry.data = {"address": "AA:BB:CC:DD:EE:FF"}
+        config_entry.options = {}  # no API credentials
 
         mock_hass.data[DOMAIN] = {
             config_entry.entry_id: {"bluetooth_devices": {}}

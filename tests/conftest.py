@@ -68,8 +68,8 @@ def mock_bluetooth_config_entry_with_api():
         minor_version=1,
         domain=DOMAIN,
         title="EARLY ZEI Tracker",
-        data={
-            "address": "AA:BB:CC:DD:EE:FF",
+        data={"address": "AA:BB:CC:DD:EE:FF"},
+        options={
             CONF_API_KEY: "test_api_key",
             CONF_API_SECRET: "test_api_secret",
         },
