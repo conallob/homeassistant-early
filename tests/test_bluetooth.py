@@ -96,10 +96,14 @@ class TestEarlyBluetoothDevice:
         device.register_callback(callback1)
         device.register_callback(callback2)
 
-        # Should not raise exception, but callback2 might not be called
-        # depending on implementation
-        with pytest.raises(Exception):
+        # When first callback raises exception, it should propagate
+        # and subsequent callbacks won't be called
+        with pytest.raises(Exception, match="Callback error"):
             device._fire_callbacks()
+
+        # Verify first callback was called but second was not
+        callback1.assert_called_once()
+        callback2.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_connect_success(

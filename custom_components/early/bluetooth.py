@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
@@ -35,7 +35,7 @@ class EarlyBluetoothDevice:
         self._advertisement_data = advertisement_data
         self._client: BleakClient | None = None
         self._orientation: int = 0
-        self._callbacks: list[callable] = []
+        self._callbacks: list[Callable] = []
 
     @property
     def name(self) -> str:
