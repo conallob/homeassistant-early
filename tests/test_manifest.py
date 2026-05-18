@@ -1,7 +1,9 @@
 """Test the EARLY integration manifest."""
+
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 class TestManifest:
@@ -10,13 +12,23 @@ class TestManifest:
     @pytest.fixture
     def manifest(self):
         """Load the manifest file."""
-        manifest_path = Path(__file__).parent.parent / "custom_components" / "early" / "manifest.json"
+        manifest_path = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "early"
+            / "manifest.json"
+        )
         with open(manifest_path) as f:
             return json.load(f)
 
     def test_manifest_exists(self):
         """Test that manifest file exists."""
-        manifest_path = Path(__file__).parent.parent / "custom_components" / "early" / "manifest.json"
+        manifest_path = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "early"
+            / "manifest.json"
+        )
         assert manifest_path.exists()
 
     def test_manifest_valid_json(self, manifest):
@@ -143,29 +155,46 @@ class TestManifestConsistency:
     @pytest.fixture
     def manifest(self):
         """Load the manifest file."""
-        manifest_path = Path(__file__).parent.parent / "custom_components" / "early" / "manifest.json"
+        manifest_path = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "early"
+            / "manifest.json"
+        )
         with open(manifest_path) as f:
             return json.load(f)
 
     def test_domain_matches_const(self, manifest):
         """Test that domain in manifest matches DOMAIN constant."""
         from custom_components.early.const import DOMAIN
+
         assert manifest["domain"] == DOMAIN
 
     def test_device_name_prefix_matches_bluetooth_config(self, manifest):
         """Test that device name prefix matches Bluetooth config."""
         from custom_components.early.const import DEVICE_NAME_PREFIX
+
         bt_config = manifest["bluetooth"][0]
         assert DEVICE_NAME_PREFIX in bt_config["local_name"]
 
     def test_strings_file_exists(self, manifest):
         """Test that strings.json exists."""
-        strings_path = Path(__file__).parent.parent / "custom_components" / "early" / "strings.json"
+        strings_path = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "early"
+            / "strings.json"
+        )
         assert strings_path.exists()
 
     def test_strings_file_valid_json(self):
         """Test that strings.json is valid JSON."""
-        strings_path = Path(__file__).parent.parent / "custom_components" / "early" / "strings.json"
+        strings_path = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "early"
+            / "strings.json"
+        )
         with open(strings_path) as f:
             strings = json.load(f)
         assert strings is not None
@@ -173,6 +202,11 @@ class TestManifestConsistency:
 
     def test_translations_dir_exists(self):
         """Test that translations directory exists."""
-        translations_path = Path(__file__).parent.parent / "custom_components" / "early" / "translations"
+        translations_path = (
+            Path(__file__).parent.parent
+            / "custom_components"
+            / "early"
+            / "translations"
+        )
         assert translations_path.exists()
         assert translations_path.is_dir()

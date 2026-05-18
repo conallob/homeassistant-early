@@ -1,6 +1,8 @@
 """Test the EARLY Bluetooth support."""
+
+from unittest.mock import AsyncMock, MagicMock, call, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch, call
 from bleak.exc import BleakError
 
 from custom_components.early.bluetooth import (
@@ -135,9 +137,7 @@ class TestEarlyBluetoothDevice:
             mock_client.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_connect_failure(
-        self, mock_hass, mock_ble_device, mock_service_info
-    ):
+    async def test_connect_failure(self, mock_hass, mock_ble_device, mock_service_info):
         """Test connection failure."""
         device = EarlyBluetoothDevice(mock_hass, mock_ble_device, mock_service_info)
 
@@ -186,7 +186,9 @@ class TestEarlyBluetoothDevice:
         await device.connect()
 
         # Mock disconnect failure
-        device._client.disconnect = AsyncMock(side_effect=BleakError("Disconnect failed"))
+        device._client.disconnect = AsyncMock(
+            side_effect=BleakError("Disconnect failed")
+        )
 
         # Should not raise exception
         await device.disconnect()

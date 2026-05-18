@@ -1,12 +1,12 @@
 """Platform for EARLY (Timeular) sensor integration."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
 from typing import Any
 
 import requests
-
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
@@ -16,16 +16,16 @@ from homeassistant.util import Throttle
 from homeassistant.util.dt import utcnow
 
 from .const import (
+    API_ACTIVITIES_ENDPOINT,
+    API_SIGN_IN_ENDPOINT,
+    API_TRACKING_ENDPOINT,
+    ATTR_ACTIVITY_ID,
+    ATTR_ACTIVITY_NAME,
+    ATTR_NOTE,
+    ATTR_STARTED_AT,
     CONF_API_SECRET,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
-    API_SIGN_IN_ENDPOINT,
-    API_TRACKING_ENDPOINT,
-    API_ACTIVITIES_ENDPOINT,
-    ATTR_ACTIVITY_ID,
-    ATTR_ACTIVITY_NAME,
-    ATTR_STARTED_AT,
-    ATTR_NOTE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ async def async_setup_entry(
     if "address" in config_entry.data:
         # This is a Bluetooth device - delegate to bluetooth_sensor
         from .bluetooth_sensor import async_setup_bluetooth_entry
+
         await async_setup_bluetooth_entry(hass, config_entry, async_add_entities)
         return
 
@@ -144,11 +145,16 @@ class EarlyAPICoordinator:
                     device_side = activity.get("deviceSide")
                     if device_side is not None:
                         # deviceSide is the orientation number (0-8)
-                        self._device_side_mapping[int(device_side)] = activity.get("name", "Unknown Activity")
+                        self._device_side_mapping[int(device_side)] = activity.get(
+                            "name", "Unknown Activity"
+                        )
 
                 self._activities_last_fetch = utcnow()
-                _LOGGER.debug("Fetched %d activities with %d device side mappings",
-                             len(self._activities), len(self._device_side_mapping))
+                _LOGGER.debug(
+                    "Fetched %d activities with %d device side mappings",
+                    len(self._activities),
+                    len(self._device_side_mapping),
+                )
 
         except requests.exceptions.RequestException as err:
             _LOGGER.error("Error fetching EARLY activities: %s", err)
@@ -260,7 +266,9 @@ class EarlyAPICoordinator:
             await self.async_update()
 
         except requests.exceptions.RequestException as err:
-            _LOGGER.error("Error starting tracking for activity %s: %s", activity_id, err)
+            _LOGGER.error(
+                "Error starting tracking for activity %s: %s", activity_id, err
+            )
             raise
 
     async def stop_tracking(self) -> None:

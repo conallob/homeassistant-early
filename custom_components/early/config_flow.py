@@ -1,4 +1,5 @@
 """Config flow for EARLY (Timeular) integration."""
+
 from __future__ import annotations
 
 import logging
@@ -6,7 +7,6 @@ from typing import Any
 
 import requests
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
@@ -16,11 +16,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .bluetooth import EarlyBluetoothDevice
-from .const import (
-    DOMAIN,
-    CONF_API_SECRET,
-    API_SIGN_IN_ENDPOINT,
-)
+from .const import API_SIGN_IN_ENDPOINT, CONF_API_SECRET, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 

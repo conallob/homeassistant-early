@@ -71,7 +71,7 @@ jobs:
 
       - name: Check import sorting with isort
         run: |
-          isort --check-only custom_components/early/ tests/
+          isort --profile=black --check-only custom_components/early/ tests/
 
       - name: Lint with flake8 (syntax errors and undefined names)
         run: |

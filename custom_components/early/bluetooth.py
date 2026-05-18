@@ -1,4 +1,5 @@
 """Bluetooth support for EARLY (Timeular) ZEI tracker."""
+
 from __future__ import annotations
 
 import logging
@@ -7,7 +8,6 @@ from typing import Any, Callable
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
-
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 
@@ -84,7 +84,9 @@ class EarlyBluetoothDevice:
 
         try:
             _LOGGER.debug("Connecting to EARLY tracker at %s", self.address)
-            self._client = BleakClient(self._device, disconnected_callback=self._on_disconnect)
+            self._client = BleakClient(
+                self._device, disconnected_callback=self._on_disconnect
+            )
             await self._client.connect()
 
             # Read initial orientation
@@ -118,7 +120,9 @@ class EarlyBluetoothDevice:
             return
 
         try:
-            value = await self._client.read_gatt_char(BLE_ORIENTATION_CHARACTERISTIC_UUID)
+            value = await self._client.read_gatt_char(
+                BLE_ORIENTATION_CHARACTERISTIC_UUID
+            )
             if value:
                 # The orientation is the first byte of the characteristic
                 self._orientation = int(value[0])
@@ -131,7 +135,11 @@ class EarlyBluetoothDevice:
         if data:
             new_orientation = int(data[0])
             if new_orientation != self._orientation:
-                _LOGGER.debug("Orientation changed from %d to %d", self._orientation, new_orientation)
+                _LOGGER.debug(
+                    "Orientation changed from %d to %d",
+                    self._orientation,
+                    new_orientation,
+                )
                 self._orientation = new_orientation
                 self._fire_callbacks()
 

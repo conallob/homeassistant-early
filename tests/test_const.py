@@ -1,24 +1,25 @@
 """Test the EARLY integration constants."""
+
 import pytest
 
 from custom_components.early.const import (
-    DOMAIN,
-    CONF_API_SECRET,
+    API_ACTIVITIES_ENDPOINT,
     API_BASE_URL,
     API_SIGN_IN_ENDPOINT,
     API_TRACKING_ENDPOINT,
-    API_ACTIVITIES_ENDPOINT,
-    BLE_SERVICE_UUID,
-    BLE_ORIENTATION_CHARACTERISTIC_UUID,
-    DEVICE_NAME_PREFIX,
-    DEFAULT_SCAN_INTERVAL,
     ATTR_ACTIVITY_ID,
     ATTR_ACTIVITY_NAME,
-    ATTR_STARTED_AT,
+    ATTR_BATTERY_LEVEL,
     ATTR_NOTE,
     ATTR_ORIENTATION,
     ATTR_RSSI,
-    ATTR_BATTERY_LEVEL,
+    ATTR_STARTED_AT,
+    BLE_ORIENTATION_CHARACTERISTIC_UUID,
+    BLE_SERVICE_UUID,
+    CONF_API_SECRET,
+    DEFAULT_SCAN_INTERVAL,
+    DEVICE_NAME_PREFIX,
+    DOMAIN,
 )
 
 
@@ -67,7 +68,10 @@ class TestConstants:
 
     def test_ble_orientation_characteristic_uuid(self):
         """Test BLE orientation characteristic UUID."""
-        assert BLE_ORIENTATION_CHARACTERISTIC_UUID == "c7e70012-c847-11e6-8175-8c89a55d403c"
+        assert (
+            BLE_ORIENTATION_CHARACTERISTIC_UUID
+            == "c7e70012-c847-11e6-8175-8c89a55d403c"
+        )
         assert isinstance(BLE_ORIENTATION_CHARACTERISTIC_UUID, str)
         assert len(BLE_ORIENTATION_CHARACTERISTIC_UUID) == 36
 
@@ -120,9 +124,10 @@ class TestConstants:
     def test_uuids_are_valid_format(self):
         """Test that UUIDs are in valid format."""
         import re
+
         uuid_pattern = re.compile(
-            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-            re.IGNORECASE
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            re.IGNORECASE,
         )
 
         assert uuid_pattern.match(BLE_SERVICE_UUID)
@@ -131,7 +136,8 @@ class TestConstants:
     def test_all_attributes_are_snake_case(self):
         """Test that all attribute constants use snake_case."""
         import re
-        snake_case_pattern = re.compile(r'^[a-z_]+$')
+
+        snake_case_pattern = re.compile(r"^[a-z_]+$")
 
         assert snake_case_pattern.match(ATTR_ACTIVITY_ID)
         assert snake_case_pattern.match(ATTR_ACTIVITY_NAME)

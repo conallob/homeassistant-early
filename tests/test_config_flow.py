@@ -1,17 +1,19 @@
 """Test the EARLY config flow."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from homeassistant import config_entries
 from homeassistant.const import CONF_API_KEY
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.early.const import DOMAIN, CONF_API_SECRET
 from custom_components.early.config_flow import (
-    ConfigFlow,
-    validate_input,
     CannotConnect,
+    ConfigFlow,
     InvalidAuth,
+    validate_input,
 )
+from custom_components.early.const import CONF_API_SECRET, DOMAIN
 
 
 class TestConfigFlow:
@@ -30,6 +32,7 @@ class TestConfigFlow:
             # Make async_add_executor_job execute the lambda immediately
             async def mock_executor(func):
                 return func()
+
             mock_hass.async_add_executor_job = mock_executor
 
             data = {
@@ -53,6 +56,7 @@ class TestConfigFlow:
             # Make async_add_executor_job execute the lambda immediately
             async def mock_executor(func):
                 return func()
+
             mock_hass.async_add_executor_job = mock_executor
 
             data = {
@@ -69,11 +73,14 @@ class TestConfigFlow:
         import requests as req_module
 
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
-            mock_post.side_effect = req_module.exceptions.ConnectionError("Connection failed")
+            mock_post.side_effect = req_module.exceptions.ConnectionError(
+                "Connection failed"
+            )
 
             # Make async_add_executor_job execute the lambda immediately
             async def mock_executor(func):
                 return func()
+
             mock_hass.async_add_executor_job = mock_executor
 
             data = {
@@ -92,12 +99,15 @@ class TestConfigFlow:
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 500
-            mock_response.raise_for_status.side_effect = req_module.exceptions.HTTPError("Server error")
+            mock_response.raise_for_status.side_effect = (
+                req_module.exceptions.HTTPError("Server error")
+            )
             mock_post.return_value = mock_response
 
             # Make async_add_executor_job execute the lambda immediately
             async def mock_executor(func):
                 return func()
+
             mock_hass.async_add_executor_job = mock_executor
 
             data = {
@@ -130,6 +140,7 @@ class TestConfigFlow:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
@@ -185,10 +196,13 @@ class TestConfigFlow:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
-            mock_post.side_effect = req_module.exceptions.ConnectionError("Connection failed")
+            mock_post.side_effect = req_module.exceptions.ConnectionError(
+                "Connection failed"
+            )
 
             result = await flow.async_step_user(
                 user_input={
@@ -233,9 +247,9 @@ class TestConfigFlow:
         discovery_info.address = "AA:BB:CC:DD:EE:FF"
 
         # Mock the unique_id check and confirm_only (context is read-only in bare flow)
-        with patch.object(flow, '_abort_if_unique_id_configured'):
-            with patch.object(flow, 'async_set_unique_id'):
-                with patch.object(flow, '_set_confirm_only'):
+        with patch.object(flow, "_abort_if_unique_id_configured"):
+            with patch.object(flow, "async_set_unique_id"):
+                with patch.object(flow, "_set_confirm_only"):
                     result = await flow.async_step_bluetooth(discovery_info)
 
                     assert result["type"] == FlowResultType.FORM
@@ -272,7 +286,7 @@ class TestConfigFlow:
         discovery_info.address = "AA:BB:CC:DD:EE:FF"
         flow._discovery_info = discovery_info
 
-        with patch.object(flow, '_set_confirm_only'):
+        with patch.object(flow, "_set_confirm_only"):
             result = await flow.async_step_bluetooth_confirm(user_input=None)
 
             assert result["type"] == FlowResultType.FORM
@@ -293,9 +307,9 @@ class TestConfigFlow:
         discovery_info.address = "AA:BB:CC:DD:EE:FF"
 
         # Mock to test that uniqueness check is performed
-        with patch.object(flow, 'async_set_unique_id') as mock_set_unique:
-            with patch.object(flow, '_abort_if_unique_id_configured') as mock_abort:
-                with patch.object(flow, '_set_confirm_only'):
+        with patch.object(flow, "async_set_unique_id") as mock_set_unique:
+            with patch.object(flow, "_abort_if_unique_id_configured") as mock_abort:
+                with patch.object(flow, "_set_confirm_only"):
                     result = await flow.async_step_bluetooth(discovery_info)
 
                     # Should call the uniqueness checks
@@ -338,6 +352,7 @@ class TestConfigFlow:
 
             async def mock_executor(func):
                 return func()
+
             mock_hass.async_add_executor_job = mock_executor
 
             result = await flow.async_step_bluetooth_api(
@@ -376,9 +391,7 @@ class TestConfigFlow:
         assert CONF_API_SECRET not in result["data"]
 
     @pytest.mark.asyncio
-    async def test_bluetooth_api_invalid_credentials(
-        self, mock_hass, mock_ble_device
-    ):
+    async def test_bluetooth_api_invalid_credentials(self, mock_hass, mock_ble_device):
         """Test bluetooth API step with invalid credentials (no token in response)."""
         flow = ConfigFlow()
         flow.hass = mock_hass
@@ -386,6 +399,7 @@ class TestConfigFlow:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
@@ -438,10 +452,13 @@ class TestConfigFlow:
         flow._discovery_info = discovery_info
 
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
-            mock_post.side_effect = req_module.exceptions.ConnectionError("Connection failed")
+            mock_post.side_effect = req_module.exceptions.ConnectionError(
+                "Connection failed"
+            )
 
             async def mock_executor(func):
                 return func()
+
             mock_hass.async_add_executor_job = mock_executor
 
             result = await flow.async_step_bluetooth_api(

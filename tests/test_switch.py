@@ -1,13 +1,12 @@
 """Test the EARLY switch platform."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
-from custom_components.early.switch import (
-    EarlyActivitySwitch,
-    async_setup_entry,
-)
-from custom_components.early.sensor import EarlyAPICoordinator
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from custom_components.early.const import DOMAIN
+from custom_components.early.sensor import EarlyAPICoordinator
+from custom_components.early.switch import EarlyActivitySwitch, async_setup_entry
 
 
 class TestEarlyActivitySwitch:
@@ -186,9 +185,7 @@ class TestSwitchPlatformSetup:
     @pytest.mark.asyncio
     async def test_async_setup_entry_success(self, mock_hass, mock_config_entry):
         """Test successful switch setup."""
-        coordinator = EarlyAPICoordinator(
-            mock_hass, "test_key", "test_secret"
-        )
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
         coordinator._activities = {
             "activity_1": "Working",
             "activity_2": "Meeting",
@@ -234,9 +231,7 @@ class TestSwitchPlatformSetup:
         async_add_entities.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_async_setup_entry_no_coordinator(
-        self, mock_hass, mock_config_entry
-    ):
+    async def test_async_setup_entry_no_coordinator(self, mock_hass, mock_config_entry):
         """Test setup fails gracefully when coordinator not found."""
         mock_hass.data[DOMAIN] = {}
         async_add_entities = AsyncMock()
@@ -246,13 +241,9 @@ class TestSwitchPlatformSetup:
         async_add_entities.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_async_setup_entry_no_activities(
-        self, mock_hass, mock_config_entry
-    ):
+    async def test_async_setup_entry_no_activities(self, mock_hass, mock_config_entry):
         """Test setup with no activities."""
-        coordinator = EarlyAPICoordinator(
-            mock_hass, "test_key", "test_secret"
-        )
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
         coordinator._activities = {}
         coordinator._tracking_data = {"currentTracking": None}
 

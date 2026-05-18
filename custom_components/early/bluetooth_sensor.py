@@ -1,13 +1,13 @@
 """Bluetooth sensor platform for EARLY (Timeular) tracker."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import requests
-
 from homeassistant.components import bluetooth
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 from homeassistant.core import HomeAssistant, callback
@@ -16,12 +16,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .bluetooth import EarlyBluetoothDevice
 from .const import (
-    CONF_API_SECRET,
-    DOMAIN,
+    ATTR_ACTIVITY_NAME,
     ATTR_ORIENTATION,
     ATTR_RSSI,
-    ATTR_ACTIVITY_NAME,
+    CONF_API_SECRET,
     DEVICE_NAME_PREFIX,
+    DOMAIN,
 )
 
 if TYPE_CHECKING:
@@ -45,9 +45,7 @@ async def async_setup_bluetooth_entry(
         return
 
     # Create the bluetooth device wrapper
-    ble_device = EarlyBluetoothDevice(
-        hass, service_info.device, service_info
-    )
+    ble_device = EarlyBluetoothDevice(hass, service_info.device, service_info)
 
     # Connect to the device
     if not await ble_device.connect():

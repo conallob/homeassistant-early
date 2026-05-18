@@ -1,14 +1,16 @@
 """Test the EARLY sensor platform."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from datetime import timedelta
 
+from datetime import timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from custom_components.early.const import DOMAIN
 from custom_components.early.sensor import (
     EarlyAPICoordinator,
     EarlyCurrentTrackingSensor,
     async_setup_entry,
 )
-from custom_components.early.const import DOMAIN
 
 
 class TestEarlyAPICoordinator:
@@ -258,13 +260,17 @@ class TestEarlyAPICoordinator:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
         # Mock tracking request failure
-        with patch("custom_components.early.sensor.requests.post") as mock_post, \
-             patch("custom_components.early.sensor.requests.get") as mock_get:
+        with patch("custom_components.early.sensor.requests.post") as mock_post, patch(
+            "custom_components.early.sensor.requests.get"
+        ) as mock_get:
             mock_post.return_value = token_response
-            mock_get.side_effect = req_module.exceptions.ConnectionError("Network error")
+            mock_get.side_effect = req_module.exceptions.ConnectionError(
+                "Network error"
+            )
 
             await coordinator.async_update()
 
@@ -450,7 +456,10 @@ class TestEarlyAPICoordinator:
 
     @pytest.mark.asyncio
     async def test_fetch_activities_with_unassigned_sides(
-        self, mock_hass, mock_api_token_response, mock_activities_response_with_unassigned
+        self,
+        mock_hass,
+        mock_api_token_response,
+        mock_activities_response_with_unassigned,
     ):
         """Test fetching activities with some unassigned device sides."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
@@ -609,7 +618,7 @@ class TestSensorPlatformSetup:
 
         with patch(
             "custom_components.early.sensor.EarlyAPICoordinator.async_update",
-            new_callable=AsyncMock
+            new_callable=AsyncMock,
         ) as mock_update:
             await async_setup_entry(mock_hass, mock_config_entry, async_add_entities)
 

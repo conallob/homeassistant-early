@@ -1,10 +1,13 @@
 """Common test fixtures for EARLY integration."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
-from custom_components.early.const import DOMAIN, CONF_API_SECRET
+from homeassistant.core import HomeAssistant
+
+from custom_components.early.const import CONF_API_SECRET, DOMAIN
 
 
 @pytest.fixture(scope="function")
@@ -85,9 +88,7 @@ def mock_api_token_response():
 
     Session-scoped for performance as this is immutable data.
     """
-    return {
-        "token": "mock_bearer_token"
-    }
+    return {"token": "mock_bearer_token"}
 
 
 @pytest.fixture(scope="session")
@@ -156,9 +157,7 @@ def mock_tracking_response_active():
                 "id": "activity_1",
             },
             "startedAt": "2025-01-15T10:30:00.000Z",
-            "note": {
-                "text": "Working on tests"
-            }
+            "note": {"text": "Working on tests"},
         }
     }
 
@@ -169,9 +168,7 @@ def mock_tracking_response_idle():
 
     Session-scoped for performance as this is immutable data.
     """
-    return {
-        "currentTracking": None
-    }
+    return {"currentTracking": None}
 
 
 @pytest.fixture(scope="function")

@@ -1,19 +1,20 @@
 """Test the EARLY Bluetooth sensor platform."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import SIGNAL_STRENGTH_DECIBELS_MILLIWATT
 
+from custom_components.early.bluetooth import EarlyBluetoothDevice
 from custom_components.early.bluetooth_sensor import (
+    EarlyTrackerCurrentActivitySensor,
     EarlyTrackerOrientationSensor,
     EarlyTrackerRSSISensor,
-    EarlyTrackerCurrentActivitySensor,
     async_setup_bluetooth_entry,
 )
-from custom_components.early.bluetooth import EarlyBluetoothDevice
-from custom_components.early.sensor import EarlyAPICoordinator
 from custom_components.early.const import DOMAIN
+from custom_components.early.sensor import EarlyAPICoordinator
 
 
 @pytest.fixture
@@ -42,7 +43,9 @@ def mock_config_entry_bt():
 class TestEarlyTrackerOrientationSensor:
     """Test the EarlyTrackerOrientationSensor class."""
 
-    def test_sensor_initialization(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
+    def test_sensor_initialization(
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
+    ):
         """Test sensor initialization."""
         sensor = EarlyTrackerOrientationSensor(
             mock_bluetooth_device_for_sensor, mock_config_entry_bt
@@ -52,7 +55,9 @@ class TestEarlyTrackerOrientationSensor:
         assert sensor._attr_name == "Timeular ZEI Orientation"
         assert sensor._attr_unique_id == "AA:BB:CC:DD:EE:FF_orientation"
 
-    def test_sensor_device_info(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
+    def test_sensor_device_info(
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
+    ):
         """Test sensor device info."""
         sensor = EarlyTrackerOrientationSensor(
             mock_bluetooth_device_for_sensor, mock_config_entry_bt
@@ -65,7 +70,9 @@ class TestEarlyTrackerOrientationSensor:
         assert device_info["manufacturer"] == "Timeular"
         assert device_info["model"] == "ZEI Tracker"
 
-    def test_sensor_native_value(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
+    def test_sensor_native_value(
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
+    ):
         """Test sensor native value."""
         sensor = EarlyTrackerOrientationSensor(
             mock_bluetooth_device_for_sensor, mock_config_entry_bt
@@ -73,7 +80,9 @@ class TestEarlyTrackerOrientationSensor:
 
         assert sensor.native_value == 3
 
-    def test_sensor_attributes(self, mock_bluetooth_device_for_sensor, mock_config_entry_bt):
+    def test_sensor_attributes(
+        self, mock_bluetooth_device_for_sensor, mock_config_entry_bt
+    ):
         """Test sensor attributes."""
         sensor = EarlyTrackerOrientationSensor(
             mock_bluetooth_device_for_sensor, mock_config_entry_bt
@@ -236,9 +245,7 @@ class TestBluetoothSensorPlatformSetup:
         config_entry.data = {"address": "AA:BB:CC:DD:EE:FF"}
         config_entry.options = {}  # no API credentials
 
-        mock_hass.data[DOMAIN] = {
-            config_entry.entry_id: {"bluetooth_devices": {}}
-        }
+        mock_hass.data[DOMAIN] = {config_entry.entry_id: {"bluetooth_devices": {}}}
 
         service_info = MagicMock()
         service_info.name = "Timeular ZEI"
@@ -293,9 +300,7 @@ class TestBluetoothSensorPlatformSetup:
         config_entry.entry_id = "test_bt_entry"
         config_entry.data = {"address": "AA:BB:CC:DD:EE:FF"}
 
-        mock_hass.data[DOMAIN] = {
-            config_entry.entry_id: {"bluetooth_devices": {}}
-        }
+        mock_hass.data[DOMAIN] = {config_entry.entry_id: {"bluetooth_devices": {}}}
 
         service_info = MagicMock()
         service_info.name = "Timeular ZEI"
@@ -331,9 +336,7 @@ class TestBluetoothSensorPlatformSetup:
             "api_secret": "test_secret",
         }
 
-        mock_hass.data[DOMAIN] = {
-            config_entry.entry_id: {"bluetooth_devices": {}}
-        }
+        mock_hass.data[DOMAIN] = {config_entry.entry_id: {"bluetooth_devices": {}}}
 
         service_info = MagicMock()
         service_info.name = "Timeular ZEI"

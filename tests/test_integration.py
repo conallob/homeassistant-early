@@ -1,12 +1,13 @@
 """Integration tests for the EARLY integration."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
-from homeassistant.const import CONF_API_KEY, Platform
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_API_KEY, Platform
 
 from custom_components.early import async_setup_entry, async_unload_entry
-from custom_components.early.const import DOMAIN, CONF_API_SECRET
+from custom_components.early.const import CONF_API_SECRET, DOMAIN
 from custom_components.early.sensor import EarlyAPICoordinator
 
 
@@ -56,12 +57,24 @@ class TestFullAPIIntegration:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
-        with patch("custom_components.early.sensor.requests.get") as mock_get, \
-             patch("custom_components.early.sensor.requests.post") as mock_post:
-            mock_post.side_effect = [token_response, start_response, token_response, stop_response]
-            mock_get.side_effect = [activities_response, tracking_idle, tracking_active, tracking_idle]
+        with patch("custom_components.early.sensor.requests.get") as mock_get, patch(
+            "custom_components.early.sensor.requests.post"
+        ) as mock_post:
+            mock_post.side_effect = [
+                token_response,
+                start_response,
+                token_response,
+                stop_response,
+            ]
+            mock_get.side_effect = [
+                activities_response,
+                tracking_idle,
+                tracking_active,
+                tracking_idle,
+            ]
 
             # Fetch activities
             await coordinator._fetch_activities()
@@ -87,22 +100,33 @@ class TestFullAPIIntegration:
 
     @pytest.mark.asyncio
     async def test_full_bluetooth_integration_workflow(
-        self, mock_hass, mock_bluetooth_config_entry_with_api,
-        mock_api_token_response, mock_activities_response
+        self,
+        mock_hass,
+        mock_bluetooth_config_entry_with_api,
+        mock_api_token_response,
+        mock_activities_response,
     ):
         """Test Bluetooth device with API integration workflow."""
-        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
+            return_value=True
+        )
 
-        with patch("homeassistant.components.bluetooth.async_register_callback") as mock_register:
+        with patch(
+            "homeassistant.components.bluetooth.async_register_callback"
+        ) as mock_register:
             mock_register.return_value = MagicMock()
 
             # Setup integration
-            result = await async_setup_entry(mock_hass, mock_bluetooth_config_entry_with_api)
+            result = await async_setup_entry(
+                mock_hass, mock_bluetooth_config_entry_with_api
+            )
             assert result is True
 
             # Verify entry exists in hass.data
             assert DOMAIN in mock_hass.data
-            assert mock_bluetooth_config_entry_with_api.entry_id in mock_hass.data[DOMAIN]
+            assert (
+                mock_bluetooth_config_entry_with_api.entry_id in mock_hass.data[DOMAIN]
+            )
 
             # Verify bluetooth callback was registered
             mock_register.assert_called_once()
@@ -110,7 +134,9 @@ class TestFullAPIIntegration:
     @pytest.mark.asyncio
     async def test_setup_unload_reload_cycle(self, mock_hass, mock_config_entry):
         """Test setup, unload, and reload cycle."""
-        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
+            return_value=True
+        )
         mock_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
 
         # Setup
@@ -159,7 +185,9 @@ class TestFullAPIIntegration:
             unique_id="unique2",
         )
 
-        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
+            return_value=True
+        )
 
         # Setup both entries
         result1 = await async_setup_entry(mock_hass, entry1)
@@ -180,6 +208,7 @@ class TestErrorRecovery:
     ):
         """Test coordinator handles token expiry and renews."""
         from homeassistant.util.dt import utcnow
+
         coordinator = EarlyAPICoordinator(mock_hass, "key", "secret")
         # Pre-populate activities and timestamp so the hourly refresh doesn't trigger
         coordinator._activities = {"test_id": "Test Activity"}
@@ -207,10 +236,12 @@ class TestErrorRecovery:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
-        with patch("custom_components.early.sensor.requests.post") as mock_post, \
-             patch("custom_components.early.sensor.requests.get") as mock_get:
+        with patch("custom_components.early.sensor.requests.post") as mock_post, patch(
+            "custom_components.early.sensor.requests.get"
+        ) as mock_get:
             mock_post.side_effect = [token_response, new_token_response]
             mock_get.side_effect = [tracking_401, tracking_success]
 
@@ -231,11 +262,14 @@ class TestErrorRecovery:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
         # First update - network error
         with patch("custom_components.early.sensor.requests.post") as mock_post:
-            mock_post.side_effect = req_module.exceptions.ConnectionError("Network error")
+            mock_post.side_effect = req_module.exceptions.ConnectionError(
+                "Network error"
+            )
 
             await coordinator.async_update()
             assert coordinator.tracking_data is None
@@ -250,8 +284,9 @@ class TestErrorRecovery:
         tracking_response.json.return_value = mock_tracking_response_idle
         tracking_response.raise_for_status = MagicMock()
 
-        with patch("custom_components.early.sensor.requests.post") as mock_post, \
-             patch("custom_components.early.sensor.requests.get") as mock_get:
+        with patch("custom_components.early.sensor.requests.post") as mock_post, patch(
+            "custom_components.early.sensor.requests.get"
+        ) as mock_get:
             mock_post.return_value = token_response
             mock_get.return_value = tracking_response
 
@@ -279,10 +314,12 @@ class TestDeviceSideMappingIntegration:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
-        with patch("custom_components.early.sensor.requests.post") as mock_post, \
-             patch("custom_components.early.sensor.requests.get") as mock_get:
+        with patch("custom_components.early.sensor.requests.post") as mock_post, patch(
+            "custom_components.early.sensor.requests.get"
+        ) as mock_get:
             mock_post.return_value = token_response
             mock_get.return_value = activities_response
 
@@ -315,10 +352,12 @@ class TestDeviceSideMappingIntegration:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
-        with patch("custom_components.early.sensor.requests.post") as mock_post, \
-             patch("custom_components.early.sensor.requests.get") as mock_get:
+        with patch("custom_components.early.sensor.requests.post") as mock_post, patch(
+            "custom_components.early.sensor.requests.get"
+        ) as mock_get:
             mock_post.return_value = token_response
             mock_get.return_value = activities_v1
 
@@ -336,8 +375,9 @@ class TestDeviceSideMappingIntegration:
         }
         activities_v2.raise_for_status = MagicMock()
 
-        with patch("custom_components.early.sensor.requests.post") as mock_post, \
-             patch("custom_components.early.sensor.requests.get") as mock_get:
+        with patch("custom_components.early.sensor.requests.post") as mock_post, patch(
+            "custom_components.early.sensor.requests.get"
+        ) as mock_get:
             mock_post.return_value = token_response
             mock_get.return_value = activities_v2
 
@@ -367,10 +407,12 @@ class TestConcurrentOperations:
 
         async def mock_executor(func):
             return func()
+
         mock_hass.async_add_executor_job = mock_executor
 
-        with patch("custom_components.early.sensor.requests.post") as mock_post, \
-             patch("custom_components.early.sensor.requests.get") as mock_get:
+        with patch("custom_components.early.sensor.requests.post") as mock_post, patch(
+            "custom_components.early.sensor.requests.get"
+        ) as mock_get:
             mock_post.return_value = token_response
             mock_get.return_value = tracking_response
 

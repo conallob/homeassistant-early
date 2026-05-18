@@ -1,16 +1,14 @@
 """Test the EARLY integration setup."""
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch, call
 
+from unittest.mock import AsyncMock, MagicMock, call, patch
+
+import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 
-from custom_components.early import (
-    async_setup_entry,
-    async_unload_entry,
-)
-from custom_components.early.const import DOMAIN
+from custom_components.early import async_setup_entry, async_unload_entry
 from custom_components.early.bluetooth import EarlyBluetoothDevice
+from custom_components.early.const import DOMAIN
 
 
 class TestIntegrationSetup:
@@ -61,7 +59,9 @@ class TestIntegrationSetup:
             mock_register.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_async_setup_entry_existing_domain(self, mock_hass, mock_config_entry):
+    async def test_async_setup_entry_existing_domain(
+        self, mock_hass, mock_config_entry
+    ):
         """Test setting up entry when domain already exists in data."""
         mock_hass.data[DOMAIN] = {"existing_entry": {}}
         mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
@@ -223,4 +223,7 @@ class TestIntegrationSetup:
 
         assert result is True
         # Should not call disconnect on non-Bluetooth device
-        assert not hasattr(mock_other_device, "disconnect") or not mock_other_device.disconnect.called
+        assert (
+            not hasattr(mock_other_device, "disconnect")
+            or not mock_other_device.disconnect.called
+        )

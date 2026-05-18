@@ -1,4 +1,5 @@
 """The EARLY (Timeular) integration."""
+
 from __future__ import annotations
 
 import logging
@@ -10,7 +11,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 
 from .bluetooth import EarlyBluetoothDevice
-from .const import DOMAIN, BLE_SERVICE_UUID, DEVICE_NAME_PREFIX
+from .const import BLE_SERVICE_UUID, DEVICE_NAME_PREFIX, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,7 +61,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     # Disconnect from any bluetooth devices
     if entry.entry_id in hass.data.get(DOMAIN, {}):
-        bluetooth_devices = hass.data[DOMAIN][entry.entry_id].get("bluetooth_devices", {})
+        bluetooth_devices = hass.data[DOMAIN][entry.entry_id].get(
+            "bluetooth_devices", {}
+        )
         for device in bluetooth_devices.values():
             if isinstance(device, EarlyBluetoothDevice):
                 await device.disconnect()
