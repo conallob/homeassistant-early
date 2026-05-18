@@ -39,7 +39,7 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -v --tb=short
+          python -m pytest tests/ -v --tb=short --cov=custom_components/early --cov-fail-under=80
 
       - name: Check Python syntax
         run: |
@@ -68,12 +68,10 @@ jobs:
       - name: Check code formatting with Black
         run: |
           black --check custom_components/early/ tests/
-        continue-on-error: true
 
       - name: Check import sorting with isort
         run: |
           isort --check-only custom_components/early/ tests/
-        continue-on-error: true
 
       - name: Lint with flake8 (syntax errors and undefined names)
         run: |

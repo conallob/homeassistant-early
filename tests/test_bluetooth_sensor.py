@@ -325,8 +325,8 @@ class TestBluetoothSensorPlatformSetup:
         """Test setup with API credentials creates current activity sensor."""
         config_entry = MagicMock()
         config_entry.entry_id = "test_bt_entry"
-        config_entry.data = {
-            "address": "AA:BB:CC:DD:EE:FF",
+        config_entry.data = {"address": "AA:BB:CC:DD:EE:FF"}
+        config_entry.options = {
             "api_key": "test_key",
             "api_secret": "test_secret",
         }

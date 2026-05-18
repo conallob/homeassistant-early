@@ -102,7 +102,12 @@ class EarlyAPICoordinator:
             )
             response.raise_for_status()
             data = response.json()
-            self._token = data.get("token")
+            token = data.get("token")
+            if not token:
+                raise requests.exceptions.HTTPError(
+                    "API returned 200 but response contained no token"
+                )
+            self._token = token
             _LOGGER.debug("Successfully obtained EARLY API token")
             return self._token
         except requests.exceptions.RequestException as err:
