@@ -179,9 +179,11 @@ class TestErrorRecovery:
         self, mock_hass, mock_api_token_response, mock_tracking_response_idle
     ):
         """Test coordinator handles token expiry and renews."""
+        from homeassistant.util.dt import utcnow
         coordinator = EarlyAPICoordinator(mock_hass, "key", "secret")
-        # Pre-populate activities so _fetch_activities() isn't called
+        # Pre-populate activities and timestamp so the hourly refresh doesn't trigger
         coordinator._activities = {"test_id": "Test Activity"}
+        coordinator._activities_last_fetch = utcnow()
 
         # First call - get token
         token_response = MagicMock()

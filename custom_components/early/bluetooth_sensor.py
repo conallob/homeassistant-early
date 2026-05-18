@@ -66,11 +66,15 @@ async def async_setup_bluetooth_entry(
 
         # Create coordinator for fetching activities
         coordinator = EarlyAPICoordinator(hass, api_key, api_secret)
-        # Fetch activities to get device side mappings
-        await coordinator._fetch_activities()
-
-        # Store coordinator for later use
-        hass.data[DOMAIN][config_entry.entry_id]["coordinator"] = coordinator
+        try:
+            await coordinator.async_fetch_activities()
+            hass.data[DOMAIN][config_entry.entry_id]["coordinator"] = coordinator
+        except Exception:
+            _LOGGER.warning(
+                "Failed to fetch activities for %s; activity sensor will be unavailable",
+                address,
+            )
+            coordinator = None
 
     # Create sensors
     sensors = [
@@ -138,7 +142,7 @@ class EarlyTrackerOrientationSensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self._device._client is not None and self._device._client.is_connected
+        return self._device.is_connected
 
     async def async_will_remove_from_hass(self) -> None:
         """Disconnect from the device when removed."""
@@ -181,7 +185,7 @@ class EarlyTrackerRSSISensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self._device._client is not None and self._device._client.is_connected
+        return self._device.is_connected
 
 
 class EarlyTrackerCurrentActivitySensor(SensorEntity):
@@ -216,35 +220,31 @@ class EarlyTrackerCurrentActivitySensor(SensorEntity):
         )
 
     @property
-    def native_value(self) -> str:
-        """Return the state of the sensor."""
+    def _current_activity_name(self) -> str | None:
+        """Look up the activity name for the current orientation (single lookup)."""
         orientation = self._device.orientation
         if orientation is None:
-            return "unknown"
+            return None
+        return self._coordinator.get_activity_by_device_side(orientation)
 
-        # Get the activity name for this orientation
-        activity_name = self._coordinator.get_activity_by_device_side(orientation)
-        if activity_name:
-            return activity_name
-
-        # No activity assigned to this side
-        return "idle"
+    @property
+    def native_value(self) -> str | None:
+        """Return the state of the sensor."""
+        if self._device.orientation is None:
+            return None
+        activity_name = self._current_activity_name
+        return activity_name if activity_name else "idle"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the state attributes."""
-        attributes = {
+        attributes: dict[str, Any] = {
             ATTR_ORIENTATION: self._device.orientation,
             "device_address": self._device.address,
         }
-
-        # Add activity name if available
-        orientation = self._device.orientation
-        if orientation is not None:
-            activity_name = self._coordinator.get_activity_by_device_side(orientation)
-            if activity_name:
-                attributes[ATTR_ACTIVITY_NAME] = activity_name
-
+        activity_name = self._current_activity_name
+        if activity_name:
+            attributes[ATTR_ACTIVITY_NAME] = activity_name
         return attributes
 
     @callback
@@ -255,7 +255,7 @@ class EarlyTrackerCurrentActivitySensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self._device._client is not None and self._device._client.is_connected
+        return self._device.is_connected
 
     async def async_will_remove_from_hass(self) -> None:
         """Disconnect from the device when removed."""

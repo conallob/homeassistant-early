@@ -1,7 +1,7 @@
 """Platform for EARLY (Timeular) sensor integration."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -13,6 +13,7 @@ from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import Throttle
+from homeassistant.util.dt import utcnow
 
 from .const import (
     CONF_API_SECRET,
@@ -30,6 +31,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=DEFAULT_SCAN_INTERVAL)
+ACTIVITIES_REFRESH_INTERVAL = timedelta(hours=1)
 
 
 async def async_setup_entry(
@@ -83,6 +85,7 @@ class EarlyAPICoordinator:
         self._tracking_data: dict[str, Any] | None = None
         self._activities: dict[str, str] = {}
         self._device_side_mapping: dict[int, str] = {}
+        self._activities_last_fetch: datetime | None = None
 
     async def _get_token(self) -> str:
         """Get authentication token from EARLY API."""
@@ -138,11 +141,16 @@ class EarlyAPICoordinator:
                         # deviceSide is the orientation number (0-8)
                         self._device_side_mapping[int(device_side)] = activity.get("name", "Unknown Activity")
 
+                self._activities_last_fetch = utcnow()
                 _LOGGER.debug("Fetched %d activities with %d device side mappings",
                              len(self._activities), len(self._device_side_mapping))
 
         except requests.exceptions.RequestException as err:
             _LOGGER.error("Error fetching EARLY activities: %s", err)
+
+    async def async_fetch_activities(self) -> None:
+        """Fetch activities from the API (public wrapper for external callers)."""
+        await self._fetch_activities()
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def async_update(self) -> None:
@@ -151,8 +159,13 @@ class EarlyAPICoordinator:
             token = await self._get_token()
             headers = {"Authorization": f"Bearer {token}"}
 
-            # Fetch activities if we don't have them yet
-            if not self._activities:
+            # Refresh activities at startup and at most once per hour
+            activities_stale = (
+                not self._activities
+                or self._activities_last_fetch is None
+                or utcnow() - self._activities_last_fetch > ACTIVITIES_REFRESH_INTERVAL
+            )
+            if activities_stale:
                 await self._fetch_activities()
 
             # Fetch current tracking status

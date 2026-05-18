@@ -469,7 +469,7 @@ class TestEarlyTrackerCurrentActivitySensor:
             mock_bluetooth_device, mock_config_entry_bt, mock_coordinator
         )
 
-        assert sensor.native_value == "unknown"
+        assert sensor.native_value is None
 
     def test_sensor_attributes_with_activity(
         self, mock_bluetooth_device, mock_config_entry_bt, mock_coordinator

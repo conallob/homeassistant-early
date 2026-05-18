@@ -116,29 +116,34 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # If user provided credentials, validate them
-            if user_input.get(CONF_API_KEY) and user_input.get(CONF_API_SECRET):
-                try:
-                    await validate_input(self.hass, user_input)
-                except CannotConnect:
-                    errors["base"] = "cannot_connect"
-                except InvalidAuth:
-                    errors["base"] = "invalid_auth"
-                except Exception:  # pylint: disable=broad-except
-                    _LOGGER.exception("Unexpected exception")
-                    errors["base"] = "unknown"
+            api_key = user_input.get(CONF_API_KEY)
+            api_secret = user_input.get(CONF_API_SECRET)
+
+            if api_key or api_secret:
+                # User filled in at least one field — both are required together
+                if not (api_key and api_secret):
+                    errors["base"] = "missing_credentials"
                 else:
-                    # Valid credentials - create entry with both address and API credentials
-                    return self.async_create_entry(
-                        title=self._discovery_info.name or "EARLY Tracker",
-                        data={
-                            CONF_ADDRESS: self._discovery_info.address,
-                            CONF_API_KEY: user_input[CONF_API_KEY],
-                            CONF_API_SECRET: user_input[CONF_API_SECRET],
-                        },
-                    )
+                    try:
+                        await validate_input(self.hass, user_input)
+                    except CannotConnect:
+                        errors["base"] = "cannot_connect"
+                    except InvalidAuth:
+                        errors["base"] = "invalid_auth"
+                    except Exception:  # pylint: disable=broad-except
+                        _LOGGER.exception("Unexpected exception")
+                        errors["base"] = "unknown"
+                    else:
+                        return self.async_create_entry(
+                            title=self._discovery_info.name or "EARLY Tracker",
+                            data={
+                                CONF_ADDRESS: self._discovery_info.address,
+                                CONF_API_KEY: api_key,
+                                CONF_API_SECRET: api_secret,
+                            },
+                        )
             else:
-                # No credentials provided - create entry with just address
+                # Neither field filled — skip API credentials
                 return self.async_create_entry(
                     title=self._discovery_info.name or "EARLY Tracker",
                     data={CONF_ADDRESS: self._discovery_info.address},

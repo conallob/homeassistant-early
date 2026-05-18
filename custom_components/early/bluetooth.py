@@ -53,6 +53,11 @@ class EarlyBluetoothDevice:
         return self._advertisement_data.rssi
 
     @property
+    def is_connected(self) -> bool:
+        """Return True if the device is currently connected."""
+        return self._client is not None and self._client.is_connected
+
+    @property
     def orientation(self) -> int:
         """Return the current orientation (0-8)."""
         return self._orientation

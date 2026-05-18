@@ -75,10 +75,11 @@ jobs:
           isort --check-only custom_components/early/ tests/
         continue-on-error: true
 
-      - name: Lint with flake8
+      - name: Lint with flake8 (syntax errors and undefined names)
         run: |
-          # Stop the build if there are Python syntax errors or undefined names
           flake8 custom_components/early/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Exit-zero treats all errors as warnings
+
+      - name: Lint with flake8 (style warnings)
+        run: |
           flake8 custom_components/early/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         continue-on-error: true

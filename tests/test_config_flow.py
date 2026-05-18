@@ -377,14 +377,20 @@ class TestConfigFlow:
     async def test_bluetooth_api_invalid_credentials(
         self, mock_hass, mock_ble_device
     ):
-        """Test bluetooth API step with invalid credentials."""
+        """Test bluetooth API step with invalid credentials (no token in response)."""
         flow = ConfigFlow()
         flow.hass = mock_hass
         flow._discovery_info = mock_ble_device
 
-        with patch("requests.post") as mock_post:
+        async def mock_executor(func):
+            return func()
+        mock_hass.async_add_executor_job = mock_executor
+
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
-            mock_response.status_code = 401
+            mock_response.raise_for_status = MagicMock()  # doesn't raise
+            mock_response.status_code = 200
+            mock_response.json.return_value = {}  # no token key → InvalidAuth
             mock_post.return_value = mock_response
 
             result = await flow.async_step_bluetooth_api(
@@ -396,6 +402,23 @@ class TestConfigFlow:
 
             assert result["type"] == FlowResultType.FORM
             assert result["errors"] == {"base": "invalid_auth"}
+
+    @pytest.mark.asyncio
+    async def test_bluetooth_api_partial_credentials(self, mock_hass, mock_ble_device):
+        """Test bluetooth API step rejects partial credentials (only key, no secret)."""
+        flow = ConfigFlow()
+        flow.hass = mock_hass
+        flow._discovery_info = mock_ble_device
+
+        result = await flow.async_step_bluetooth_api(
+            user_input={
+                CONF_API_KEY: "some_key",
+                CONF_API_SECRET: "",  # missing secret
+            }
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"] == {"base": "missing_credentials"}
 
     @pytest.mark.asyncio
     async def test_bluetooth_api_cannot_connect(self, mock_hass):
