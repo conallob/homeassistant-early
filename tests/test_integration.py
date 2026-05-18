@@ -238,7 +238,7 @@ class TestErrorRecovery:
             await coordinator.async_update()
             assert coordinator.tracking_data is None
 
-        # Second update - success
+        # Second update - success (no_throttle=True bypasses the @Throttle cooldown)
         token_response = MagicMock()
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
@@ -253,7 +253,7 @@ class TestErrorRecovery:
             mock_post.return_value = token_response
             mock_get.return_value = tracking_response
 
-            await coordinator.async_update()
+            await coordinator.async_update(no_throttle=True)
             assert coordinator.tracking_data == mock_tracking_response_idle
 
 

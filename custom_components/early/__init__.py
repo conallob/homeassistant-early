@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components import bluetooth
+from homeassistant.components import bluetooth as ha_bluetooth
 from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -33,8 +33,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # This is a bluetooth device entry
         @callback
         def _async_bluetooth_callback(
-            service_info: bluetooth.BluetoothServiceInfoBleak,
-            change: bluetooth.BluetoothChange,
+            service_info: ha_bluetooth.BluetoothServiceInfoBleak,
+            change: ha_bluetooth.BluetoothChange,
         ) -> None:
             """Handle bluetooth device discovery and updates."""
             if service_info.address == entry.data["address"]:
@@ -45,11 +45,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
 
         entry.async_on_unload(
-            bluetooth.async_register_callback(
+            ha_bluetooth.async_register_callback(
                 hass,
                 _async_bluetooth_callback,
                 BluetoothCallbackMatcher(address=entry.data["address"]),
-                bluetooth.BluetoothScanningMode.ACTIVE,
+                ha_bluetooth.BluetoothScanningMode.ACTIVE,
             )
         )
 

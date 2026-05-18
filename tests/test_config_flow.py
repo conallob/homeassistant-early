@@ -232,13 +232,14 @@ class TestConfigFlow:
         discovery_info.name = "Timeular ZEI"
         discovery_info.address = "AA:BB:CC:DD:EE:FF"
 
-        # Mock the unique_id check
+        # Mock the unique_id check and confirm_only (context is read-only in bare flow)
         with patch.object(flow, '_abort_if_unique_id_configured'):
             with patch.object(flow, 'async_set_unique_id'):
-                result = await flow.async_step_bluetooth(discovery_info)
+                with patch.object(flow, '_set_confirm_only'):
+                    result = await flow.async_step_bluetooth(discovery_info)
 
-                assert result["type"] == FlowResultType.FORM
-                assert result["step_id"] == "bluetooth_confirm"
+                    assert result["type"] == FlowResultType.FORM
+                    assert result["step_id"] == "bluetooth_confirm"
 
     @pytest.mark.asyncio
     async def test_bluetooth_confirm_proceeds_to_api_step(self, mock_hass):
@@ -294,11 +295,12 @@ class TestConfigFlow:
         # Mock to test that uniqueness check is performed
         with patch.object(flow, 'async_set_unique_id') as mock_set_unique:
             with patch.object(flow, '_abort_if_unique_id_configured') as mock_abort:
-                result = await flow.async_step_bluetooth(discovery_info)
+                with patch.object(flow, '_set_confirm_only'):
+                    result = await flow.async_step_bluetooth(discovery_info)
 
-                # Should call the uniqueness checks
-                mock_set_unique.assert_called_once_with(discovery_info.address)
-                mock_abort.assert_called_once()
+                    # Should call the uniqueness checks
+                    mock_set_unique.assert_called_once_with(discovery_info.address)
+                    mock_abort.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_bluetooth_api_step_shows_form(self, mock_hass, mock_ble_device):
