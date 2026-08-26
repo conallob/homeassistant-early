@@ -46,11 +46,21 @@ class TestConfigFlow:
 
     @pytest.mark.asyncio
     async def test_validate_input_invalid_auth(self, mock_hass):
-        """Test validate_input with invalid credentials."""
+        """Test validate_input with invalid credentials.
+
+        Uses a real HTTPError with a 401 response, matching what
+        response.raise_for_status() actually raises for a real API
+        rejection - not just any Exception. See config_flow.py's
+        HTTPError handling for why this distinction matters.
+        """
+        import requests as req_module
+
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 401
-            mock_response.raise_for_status.side_effect = Exception("Unauthorized")
+            http_error = req_module.exceptions.HTTPError("Unauthorized")
+            http_error.response = mock_response
+            mock_response.raise_for_status.side_effect = http_error
             mock_post.return_value = mock_response
 
             # Make async_add_executor_job execute the lambda immediately
@@ -166,18 +176,24 @@ class TestConfigFlow:
 
     @pytest.mark.asyncio
     async def test_form_user_invalid_auth(self, mock_hass):
-        """Test invalid auth error in user step."""
+        """Test invalid auth error in user step.
+
+        Uses a real HTTPError with a 401 response - what
+        response.raise_for_status() actually raises for a real API
+        rejection - so this exercises the same path a user hitting a
+        genuinely wrong API key/secret would.
+        """
+        import requests as req_module
+
         flow = ConfigFlow()
         flow.hass = mock_hass
 
         with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 401
-            # validate_input's except clauses treat requests.RequestException
-            # (which HTTPError is a subclass of) as CannotConnect and
-            # anything else as InvalidAuth - a generic Exception here is
-            # what actually exercises the "invalid_auth" error path.
-            mock_response.raise_for_status.side_effect = Exception("Unauthorized")
+            http_error = req_module.exceptions.HTTPError("Unauthorized")
+            http_error.response = mock_response
+            mock_response.raise_for_status.side_effect = http_error
             mock_post.return_value = mock_response
 
             # Make async_add_executor_job execute the lambda immediately,

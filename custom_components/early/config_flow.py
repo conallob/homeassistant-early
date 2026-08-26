@@ -52,6 +52,19 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         if "token" not in token_data:
             raise InvalidAuth
 
+    except requests.exceptions.HTTPError as err:
+        # HTTPError is a RequestException subclass, so it must be checked
+        # before the broader RequestException clause below: a 401 means
+        # the credentials themselves were rejected (InvalidAuth), not a
+        # connectivity problem (CannotConnect) - without this, a real
+        # invalid API key/secret would surface as "cannot_connect" instead
+        # of "invalid_auth", since raise_for_status() raises HTTPError for
+        # every non-2xx status, 401 included.
+        if err.response is not None and err.response.status_code == 401:
+            _LOGGER.error("EARLY API rejected the provided credentials: %s", err)
+            raise InvalidAuth from err
+        _LOGGER.error("Error connecting to EARLY API: %s", err)
+        raise CannotConnect from err
     except requests.exceptions.RequestException as err:
         _LOGGER.error("Error connecting to EARLY API: %s", err)
         raise CannotConnect from err
