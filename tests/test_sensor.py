@@ -562,6 +562,27 @@ class TestEarlyCurrentTrackingSensor:
 
         assert sensor.state == "Working"
 
+    def test_sensor_state_tracking_no_name_unknown_activity_id(self, mock_hass):
+        """Test sensor state when the activity id isn't in the activities map.
+
+        E.g. a stale/not-yet-refreshed activities list, or a newly created
+        activity. Should fall back to "tracking" rather than crashing or
+        showing a misleading name.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"activity_2": "Meeting"}
+        coordinator._tracking_data = {
+            "currentTracking": {
+                "activity": {
+                    "id": "activity_1",
+                },
+            }
+        }
+        sensor = EarlyCurrentTrackingSensor(coordinator)
+
+        assert sensor.state == "tracking"
+        assert "activity_name" not in sensor.extra_state_attributes
+
     def test_sensor_attributes_unavailable(self, mock_hass):
         """Test sensor attributes when data unavailable."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
