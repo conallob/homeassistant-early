@@ -31,8 +31,11 @@ async def async_setup_entry(
 
     coordinator = hass.data[DOMAIN][config_entry.entry_id].get("coordinator")
     if not coordinator:
-        # No API credentials configured for this entry (e.g. a Bluetooth-only
-        # tracker) - there is nothing to create activity switches for.
+        # No coordinator was created for this entry - either no API
+        # credentials were configured (e.g. a Bluetooth-only tracker), or
+        # credentials were configured but the initial activity fetch failed
+        # (see bluetooth_sensor.py). Either way, there is nothing to create
+        # activity switches for.
         _LOGGER.debug(
             "No API coordinator for entry %s; skipping activity switches",
             config_entry.entry_id,

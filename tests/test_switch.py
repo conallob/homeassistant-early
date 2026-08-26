@@ -248,6 +248,27 @@ class TestSwitchPlatformSetup:
         assert all(isinstance(e, EarlyActivitySwitch) for e in entities)
 
     @pytest.mark.asyncio
+    async def test_async_setup_entry_bluetooth_api_fetch_failed(
+        self, mock_hass, mock_bluetooth_config_entry_with_api
+    ):
+        """Test switches are skipped when the initial activity fetch failed.
+
+        bluetooth_sensor.py only stores a coordinator in hass.data when the
+        initial async_fetch_activities() call succeeds; if it raises a
+        RequestException, the entry is left with no "coordinator" key even
+        though API credentials were configured. Switch setup must treat that
+        the same as no credentials at all.
+        """
+        mock_hass.data[DOMAIN] = {mock_bluetooth_config_entry_with_api.entry_id: {}}
+        async_add_entities = AsyncMock()
+
+        await async_setup_entry(
+            mock_hass, mock_bluetooth_config_entry_with_api, async_add_entities
+        )
+
+        async_add_entities.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_async_setup_entry_missing_credentials(self, mock_hass):
         """Test setup fails gracefully with missing credentials."""
         config_entry = MagicMock()
