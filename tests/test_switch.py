@@ -220,6 +220,34 @@ class TestSwitchPlatformSetup:
         async_add_entities.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_async_setup_entry_bluetooth_with_api(
+        self, mock_hass, mock_bluetooth_config_entry_with_api
+    ):
+        """Test switches are created for a Bluetooth entry with API credentials."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {
+            "activity_1": "Working",
+            "activity_2": "Meeting",
+        }
+        coordinator._tracking_data = {"currentTracking": None}
+
+        mock_hass.data[DOMAIN] = {
+            mock_bluetooth_config_entry_with_api.entry_id: {"coordinator": coordinator}
+        }
+
+        coordinator.async_update = AsyncMock()
+        async_add_entities = AsyncMock()
+
+        await async_setup_entry(
+            mock_hass, mock_bluetooth_config_entry_with_api, async_add_entities
+        )
+
+        async_add_entities.assert_called_once()
+        entities = async_add_entities.call_args[0][0]
+        assert len(entities) == 2
+        assert all(isinstance(e, EarlyActivitySwitch) for e in entities)
+
+    @pytest.mark.asyncio
     async def test_async_setup_entry_missing_credentials(self, mock_hass):
         """Test setup fails gracefully with missing credentials."""
         config_entry = MagicMock()
