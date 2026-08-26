@@ -7,11 +7,10 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_API_SECRET, DOMAIN
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,26 +21,25 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up EARLY switches from a config entry."""
-    # Only set up switches for API configurations, not Bluetooth devices
-    if "address" in config_entry.data:
-        return
-
-    api_key = config_entry.data.get(CONF_API_KEY)
-    api_secret = config_entry.data.get(CONF_API_SECRET)
-
-    if not api_key or not api_secret:
-        _LOGGER.error("API key or secret missing from config entry")
-        return
-
-    # Get the coordinator from the sensor platform
-    # We need to share the coordinator between sensor and switch platforms
+    # Switches require an API coordinator to start/stop tracking. This is
+    # available for plain API config entries, and for Bluetooth entries that
+    # were also configured with optional API credentials. The coordinator is
+    # created by the sensor platform, which is forwarded before this one.
     if DOMAIN not in hass.data or config_entry.entry_id not in hass.data[DOMAIN]:
         _LOGGER.error("Coordinator not found for entry %s", config_entry.entry_id)
         return
 
     coordinator = hass.data[DOMAIN][config_entry.entry_id].get("coordinator")
     if not coordinator:
-        _LOGGER.error("Coordinator not initialized for entry %s", config_entry.entry_id)
+        # No coordinator was created for this entry - either no API
+        # credentials were configured (e.g. a Bluetooth-only tracker), or
+        # credentials were configured but the initial activity fetch failed
+        # (see bluetooth_sensor.py). Either way, there is nothing to create
+        # activity switches for.
+        _LOGGER.debug(
+            "No API coordinator for entry %s; skipping activity switches",
+            config_entry.entry_id,
+        )
         return
 
     # Fetch activities to create switches
@@ -52,9 +50,21 @@ async def async_setup_entry(
         _LOGGER.warning("No activities found to create switches")
         return
 
+    # Bluetooth entries are a new source of activity switches (previously
+    # they were skipped entirely). Scope their unique_id by config entry so
+    # they can't collide with a Cloud API entry for the same account - the
+    # README documents running both simultaneously. Plain API entries keep
+    # their original unique_id format for backwards compatibility with
+    # existing entity registries.
+    entry_id_for_unique_id = (
+        config_entry.entry_id if "address" in config_entry.data else None
+    )
+
     # Create a switch for each activity
     switches = [
-        EarlyActivitySwitch(coordinator, activity_id, activity_name)
+        EarlyActivitySwitch(
+            coordinator, activity_id, activity_name, entry_id_for_unique_id
+        )
         for activity_id, activity_name in activities.items()
     ]
 
@@ -64,13 +74,23 @@ async def async_setup_entry(
 class EarlyActivitySwitch(SwitchEntity):
     """Representation of an EARLY activity switch."""
 
-    def __init__(self, coordinator: Any, activity_id: str, activity_name: str) -> None:
+    def __init__(
+        self,
+        coordinator: Any,
+        activity_id: str,
+        activity_name: str,
+        config_entry_id: str | None = None,
+    ) -> None:
         """Initialize the switch."""
         self._coordinator = coordinator
         self._activity_id = activity_id
         self._activity_name = activity_name
         self._attr_name = f"EARLY {activity_name}"
-        self._attr_unique_id = f"{DOMAIN}_activity_{activity_id}"
+        self._attr_unique_id = (
+            f"{DOMAIN}_{config_entry_id}_activity_{activity_id}"
+            if config_entry_id
+            else f"{DOMAIN}_activity_{activity_id}"
+        )
         self._attr_icon = "mdi:timer"
 
     @property

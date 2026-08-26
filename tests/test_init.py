@@ -29,9 +29,10 @@ class TestIntegrationSetup:
         assert "config" in mock_hass.data[DOMAIN][mock_config_entry.entry_id]
         assert "bluetooth_devices" in mock_hass.data[DOMAIN][mock_config_entry.entry_id]
 
-        mock_hass.config_entries.async_forward_entry_setups.assert_called_once_with(
-            mock_config_entry, [Platform.SENSOR, Platform.SWITCH]
-        )
+        assert mock_hass.config_entries.async_forward_entry_setups.call_args_list == [
+            call(mock_config_entry, [Platform.SENSOR]),
+            call(mock_config_entry, [Platform.SWITCH]),
+        ]
 
     @pytest.mark.asyncio
     async def test_async_setup_entry_bluetooth(
@@ -53,8 +54,12 @@ class TestIntegrationSetup:
             assert DOMAIN in mock_hass.data
             assert mock_bluetooth_config_entry.entry_id in mock_hass.data[DOMAIN]
 
-            mock_hass.config_entries.async_forward_entry_setups.assert_called_once_with(
-                mock_bluetooth_config_entry, [Platform.SENSOR, Platform.SWITCH]
+            assert (
+                mock_hass.config_entries.async_forward_entry_setups.call_args_list
+                == [
+                    call(mock_bluetooth_config_entry, [Platform.SENSOR]),
+                    call(mock_bluetooth_config_entry, [Platform.SWITCH]),
+                ]
             )
             mock_register.assert_called_once()
 

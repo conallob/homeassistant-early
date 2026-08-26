@@ -73,7 +73,7 @@ async def async_setup_bluetooth_entry(
         except requests.exceptions.RequestException as err:
             _LOGGER.warning(
                 "Network error fetching activities for %s: %s; "
-                "activity name sensor will be unavailable",
+                "activity name sensor and activity switches will be unavailable",
                 address,
                 err,
             )

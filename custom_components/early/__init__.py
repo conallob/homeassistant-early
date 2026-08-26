@@ -26,8 +26,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "bluetooth_devices": {},
     }
 
-    # Set up platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Set up platforms. SENSOR is forwarded and awaited on its own, not
+    # together with SWITCH, because async_forward_entry_setups sets up
+    # platforms concurrently (asyncio.gather) rather than in list order.
+    # switch.py depends on the API coordinator that sensor.py/
+    # bluetooth_sensor.py creates, so SENSOR must fully finish first.
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SWITCH])
 
     # Register for bluetooth discovery if this is a bluetooth setup
     if "address" in entry.data:

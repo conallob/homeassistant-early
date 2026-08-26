@@ -12,6 +12,26 @@ from custom_components.early.switch import EarlyActivitySwitch, async_setup_entr
 class TestEarlyActivitySwitch:
     """Test the EarlyActivitySwitch class."""
 
+    def test_switch_unique_id_without_config_entry_id(self, mock_hass):
+        """Test unique_id keeps its original format for plain API entries."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        switch = EarlyActivitySwitch(coordinator, "activity_1", "Working")
+
+        assert switch.unique_id == f"{DOMAIN}_activity_activity_1"
+
+    def test_switch_unique_id_scoped_by_config_entry_id(self, mock_hass):
+        """Test unique_id is scoped by config entry for Bluetooth+API entries.
+
+        This avoids a collision with a Cloud API entry for the same account,
+        since the README documents running both simultaneously.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        switch = EarlyActivitySwitch(
+            coordinator, "activity_1", "Working", "bt_entry_id"
+        )
+
+        assert switch.unique_id == f"{DOMAIN}_bt_entry_id_activity_activity_1"
+
     def test_switch_is_on_true(self, mock_hass):
         """Test switch is_on when activity is being tracked."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
@@ -205,6 +225,8 @@ class TestSwitchPlatformSetup:
         entities = async_add_entities.call_args[0][0]
         assert len(entities) == 2
         assert all(isinstance(e, EarlyActivitySwitch) for e in entities)
+        # Plain API entries keep the original unique_id format.
+        assert all(e.unique_id.startswith(f"{DOMAIN}_activity_") for e in entities)
 
     @pytest.mark.asyncio
     async def test_async_setup_entry_bluetooth(
@@ -215,6 +237,63 @@ class TestSwitchPlatformSetup:
 
         await async_setup_entry(
             mock_hass, mock_bluetooth_config_entry, async_add_entities
+        )
+
+        async_add_entities.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_setup_entry_bluetooth_with_api(
+        self, mock_hass, mock_bluetooth_config_entry_with_api
+    ):
+        """Test switches are created for a Bluetooth entry with API credentials."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {
+            "activity_1": "Working",
+            "activity_2": "Meeting",
+        }
+        coordinator._tracking_data = {"currentTracking": None}
+
+        mock_hass.data[DOMAIN] = {
+            mock_bluetooth_config_entry_with_api.entry_id: {"coordinator": coordinator}
+        }
+
+        coordinator.async_update = AsyncMock()
+        async_add_entities = AsyncMock()
+
+        await async_setup_entry(
+            mock_hass, mock_bluetooth_config_entry_with_api, async_add_entities
+        )
+
+        async_add_entities.assert_called_once()
+        entities = async_add_entities.call_args[0][0]
+        assert len(entities) == 2
+        assert all(isinstance(e, EarlyActivitySwitch) for e in entities)
+        # Bluetooth+API switches must be scoped by config entry so they
+        # can't collide with a Cloud API entry for the same account.
+        assert all(
+            e.unique_id.startswith(
+                f"{DOMAIN}_{mock_bluetooth_config_entry_with_api.entry_id}_activity_"
+            )
+            for e in entities
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_setup_entry_bluetooth_api_fetch_failed(
+        self, mock_hass, mock_bluetooth_config_entry_with_api
+    ):
+        """Test switches are skipped when the initial activity fetch failed.
+
+        bluetooth_sensor.py only stores a coordinator in hass.data when the
+        initial async_fetch_activities() call succeeds; if it raises a
+        RequestException, the entry is left with no "coordinator" key even
+        though API credentials were configured. Switch setup must treat that
+        the same as no credentials at all.
+        """
+        mock_hass.data[DOMAIN] = {mock_bluetooth_config_entry_with_api.entry_id: {}}
+        async_add_entities = AsyncMock()
+
+        await async_setup_entry(
+            mock_hass, mock_bluetooth_config_entry_with_api, async_add_entities
         )
 
         async_add_entities.assert_not_called()

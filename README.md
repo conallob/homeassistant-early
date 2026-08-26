@@ -5,13 +5,15 @@ A custom Home Assistant integration for [EARLY](https://early.app) (formerly kno
 ## Features
 
 ### Cloud API Integration
-- **Current Activity Sensor**: Displays the currently tracked activity via cloud API
+- **Current Activity Sensor**: Displays the currently tracked activity via cloud API, by name (not just whether tracking is on or off)
 - **Activity Attributes**: Provides additional details like activity ID, name, start time, and notes
 - **Automatic Updates**: Polls the EARLY API every 30 seconds for current tracking status
+- **Per-Activity Switches**: Every activity configured in your EARLY account is exposed as its own `switch` entity, so you can start/stop tracking a specific activity from an automation, dashboard tile, or phone widget
 
 ### Bluetooth Tracker Support
 - **Automatic Discovery**: Detects EARLY ZEI Bluetooth trackers automatically
 - **Orientation Sensor**: Shows which side (0-8) of the physical tracker is facing up
+- **Current Activity Sensor**: When paired with optional API credentials, maps the tracker's orientation to the matching EARLY activity name
 - **Real-time Updates**: Instant notification when the tracker orientation changes
 - **Signal Strength**: Monitor Bluetooth connection quality
 
@@ -115,6 +117,35 @@ You can set up both the Bluetooth tracker and the Cloud API simultaneously. They
 
 This sensor shows the Bluetooth signal strength between Home Assistant and the tracker.
 
+#### Tracker Current Activity
+
+**Entity ID**: `sensor.<device_name>_current_activity`
+
+Only created when the Bluetooth tracker entry is also configured with API credentials (see [Option 1: Bluetooth Tracker](#option-1-bluetooth-tracker-automatic)).
+
+**States**:
+- `idle`: The current orientation isn't mapped to an activity
+- `<activity_name>`: The activity assigned to the side currently facing up in your EARLY account
+
+**Attributes**:
+- `orientation`: Current orientation value
+- `device_address`: Bluetooth MAC address of the tracker
+- `activity_name`: The name of the current activity
+
+## Switches
+
+### EARLY Activity Switches
+
+**Entity ID**: `switch.early_<activity_name>` (a slugified version of the activity name - check **Settings** → **Devices & Services** → **Entities** for the exact ID if your activity name has punctuation or non-ASCII characters)
+
+Created for every activity in your EARLY account, for any config entry that has API credentials configured (a Cloud API entry, or a Bluetooth entry with optional API credentials added). Turning a switch **on** starts tracking that activity via the EARLY API; turning it **off** stops tracking (only if that activity is the one currently being tracked). Exactly one activity switch is `on` at a time, matching `sensor.early_current_activity`.
+
+This is the building block for lock-screen widgets and Shortcuts automations: add an activity switch to a Home Assistant dashboard or expose it to the [Home Assistant Companion App widget](https://companion.home-assistant.io/) to start/stop a specific activity with one tap.
+
+**Attributes**:
+- `activity_id`: The unique ID of the activity
+- `activity_name`: The name of the activity
+
 ## Example Automations
 
 ### Notify when starting work
@@ -201,6 +232,28 @@ automation:
         data:
           message: "Break time!"
 ```
+
+### Toggle an activity from a lock screen widget
+
+Add `switch.early_work` to a dashboard, or expose it as a widget via the Home Assistant Companion App, to start/stop tracking "Work" with one tap:
+
+```yaml
+automation:
+  - alias: "Stop tracking Work after hours"
+    trigger:
+      - platform: time
+        at: "18:00:00"
+    condition:
+      - condition: state
+        entity_id: switch.early_work
+        state: "on"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.early_work
+```
+
+A phone Shortcuts automation ("if I open my work phone after 6pm") can call the same switch via the Home Assistant API or the companion app's `switch.turn_off` action.
 
 ## Technical Information
 
