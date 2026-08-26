@@ -539,6 +539,29 @@ class TestEarlyCurrentTrackingSensor:
 
         assert sensor.state == "tracking"
 
+    def test_sensor_state_tracking_no_name_falls_back_to_activities_list(
+        self, mock_hass
+    ):
+        """Test sensor state falls back to the activities list for the name.
+
+        The EARLY API's currentTracking.activity object has been observed
+        in practice to only include "id", not "name" - the sensor must
+        resolve the name from the coordinator's separately-fetched
+        activities list instead of showing the generic "tracking" state.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"activity_1": "Working"}
+        coordinator._tracking_data = {
+            "currentTracking": {
+                "activity": {
+                    "id": "activity_1",
+                },
+            }
+        }
+        sensor = EarlyCurrentTrackingSensor(coordinator)
+
+        assert sensor.state == "Working"
+
     def test_sensor_attributes_unavailable(self, mock_hass):
         """Test sensor attributes when data unavailable."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
@@ -577,6 +600,26 @@ class TestEarlyCurrentTrackingSensor:
         assert attributes["activity_name"] == "Working"
         assert attributes["started_at"] == "2025-01-15T10:30:00.000Z"
         assert attributes["note"] == "Working on tests"
+
+    def test_sensor_attributes_tracking_no_name_falls_back_to_activities_list(
+        self, mock_hass
+    ):
+        """Test activity_name attribute falls back to the activities list."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"activity_1": "Working"}
+        coordinator._tracking_data = {
+            "currentTracking": {
+                "activity": {
+                    "id": "activity_1",
+                },
+                "startedAt": "2025-01-15T10:30:00.000Z",
+            }
+        }
+        sensor = EarlyCurrentTrackingSensor(coordinator)
+
+        attributes = sensor.extra_state_attributes
+        assert attributes["activity_id"] == "activity_1"
+        assert attributes["activity_name"] == "Working"
 
     def test_sensor_attributes_tracking_no_note(self, mock_hass):
         """Test sensor attributes when tracking without note."""
