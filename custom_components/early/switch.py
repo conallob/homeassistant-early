@@ -50,9 +50,21 @@ async def async_setup_entry(
         _LOGGER.warning("No activities found to create switches")
         return
 
+    # Bluetooth entries are a new source of activity switches (previously
+    # they were skipped entirely). Scope their unique_id by config entry so
+    # they can't collide with a Cloud API entry for the same account - the
+    # README documents running both simultaneously. Plain API entries keep
+    # their original unique_id format for backwards compatibility with
+    # existing entity registries.
+    entry_id_for_unique_id = (
+        config_entry.entry_id if "address" in config_entry.data else None
+    )
+
     # Create a switch for each activity
     switches = [
-        EarlyActivitySwitch(coordinator, activity_id, activity_name)
+        EarlyActivitySwitch(
+            coordinator, activity_id, activity_name, entry_id_for_unique_id
+        )
         for activity_id, activity_name in activities.items()
     ]
 
@@ -62,13 +74,23 @@ async def async_setup_entry(
 class EarlyActivitySwitch(SwitchEntity):
     """Representation of an EARLY activity switch."""
 
-    def __init__(self, coordinator: Any, activity_id: str, activity_name: str) -> None:
+    def __init__(
+        self,
+        coordinator: Any,
+        activity_id: str,
+        activity_name: str,
+        config_entry_id: str | None = None,
+    ) -> None:
         """Initialize the switch."""
         self._coordinator = coordinator
         self._activity_id = activity_id
         self._activity_name = activity_name
         self._attr_name = f"EARLY {activity_name}"
-        self._attr_unique_id = f"{DOMAIN}_activity_{activity_id}"
+        self._attr_unique_id = (
+            f"{DOMAIN}_{config_entry_id}_activity_{activity_id}"
+            if config_entry_id
+            else f"{DOMAIN}_activity_{activity_id}"
+        )
         self._attr_icon = "mdi:timer"
 
     @property

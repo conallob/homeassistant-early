@@ -136,7 +136,7 @@ Only created when the Bluetooth tracker entry is also configured with API creden
 
 ### EARLY Activity Switches
 
-**Entity ID**: `switch.early_<activity_name>`
+**Entity ID**: `switch.early_<activity_name>` (a slugified version of the activity name - check **Settings** → **Devices & Services** → **Entities** for the exact ID if your activity name has punctuation or non-ASCII characters)
 
 Created for every activity in your EARLY account, for any config entry that has API credentials configured (a Cloud API entry, or a Bluetooth entry with optional API credentials added). Turning a switch **on** starts tracking that activity via the EARLY API; turning it **off** stops tracking (only if that activity is the one currently being tracked). Exactly one activity switch is `on` at a time, matching `sensor.early_current_activity`.
 
