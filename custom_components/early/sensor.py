@@ -325,6 +325,33 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         self._attr_icon = "mdi:clock-outline"
 
     @property
+    def _current_activity_name(self) -> str | None:
+        """Resolve the current activity's name.
+
+        The tracking endpoint's currentTracking.activity object doesn't
+        reliably include a "name" field (observed in practice to return
+        only "id") - fall back to the activities list the coordinator
+        fetches separately from the activities endpoint.
+        """
+        if not self._coordinator.tracking_data:
+            return None
+
+        current_tracking = self._coordinator.tracking_data.get("currentTracking")
+        if not current_tracking:
+            return None
+
+        activity = current_tracking.get("activity", {})
+        name = activity.get("name")
+        if name:
+            return name
+
+        activity_id = activity.get("id")
+        if activity_id:
+            return self._coordinator.get_all_activities().get(activity_id)
+
+        return None
+
+    @property
     def state(self) -> str:
         """Return the state of the sensor."""
         if not self._coordinator.tracking_data:
@@ -334,13 +361,8 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         if not current_tracking:
             return "idle"
 
-        activity = current_tracking.get("activity", {})
-        activity_name = activity.get("name")
-
-        if activity_name:
-            return activity_name
-
-        return "tracking"
+        activity_name = self._current_activity_name
+        return activity_name if activity_name else "tracking"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -355,7 +377,7 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         activity = current_tracking.get("activity", {})
         attributes = {
             ATTR_ACTIVITY_ID: activity.get("id"),
-            ATTR_ACTIVITY_NAME: activity.get("name"),
+            ATTR_ACTIVITY_NAME: self._current_activity_name,
             ATTR_STARTED_AT: current_tracking.get("startedAt"),
             ATTR_NOTE: current_tracking.get("note", {}).get("text"),
         }
