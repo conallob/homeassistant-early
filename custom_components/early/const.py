@@ -1,7 +1,9 @@
 """Constants for the EARLY (Timeular) integration."""
 
 DOMAIN = "early"
-CONF_API_KEY = "api_key"
+# CONF_API_SECRET has no equivalent in homeassistant.const, so it lives here.
+# CONF_API_KEY does have one (homeassistant.const.CONF_API_KEY, also "api_key")
+# and every module imports that instead - don't add a duplicate here.
 CONF_API_SECRET = "api_secret"
 
 # API Configuration

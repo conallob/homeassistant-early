@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .util import is_bluetooth_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ async def async_setup_entry(
     # their original unique_id format for backwards compatibility with
     # existing entity registries.
     entry_id_for_unique_id = (
-        config_entry.entry_id if "address" in config_entry.data else None
+        config_entry.entry_id if is_bluetooth_entry(config_entry) else None
     )
 
     # Create a switch for each activity

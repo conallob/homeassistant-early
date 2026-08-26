@@ -110,6 +110,48 @@ class TestEarlyAPICoordinator:
         assert len(coordinator._activities) == 0
 
     @pytest.mark.asyncio
+    async def test_fetch_activities_token_refresh(
+        self, mock_hass, mock_api_token_response, mock_activities_response
+    ):
+        """Test _fetch_activities retries on a 401 like the other API calls.
+
+        Regression test: _fetch_activities previously didn't retry on an
+        expired token, unlike async_update/start_tracking/stop_tracking -
+        if the token expired between the last update and an hourly
+        activities refresh, the fetch would fail, be logged, and leave
+        the activity name mapping silently stale.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._token = "expired_token"
+
+        # Mock activities request with 401 on first call
+        activities_response_401 = MagicMock()
+        activities_response_401.status_code = 401
+
+        # Mock new token request
+        new_token_response = MagicMock()
+        new_token_response.json.return_value = mock_api_token_response
+        new_token_response.raise_for_status = MagicMock()
+
+        # Mock activities request success on retry
+        activities_response_success = MagicMock()
+        activities_response_success.status_code = 200
+        activities_response_success.json.return_value = mock_activities_response
+        activities_response_success.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            activities_response_401,
+            new_token_response,
+            activities_response_success,
+        ]
+
+        await coordinator._fetch_activities()
+
+        assert coordinator._token == "mock_bearer_token"
+        assert len(coordinator._activities) == 2
+        assert coordinator._activities["activity_1"] == "Working"
+
+    @pytest.mark.asyncio
     async def test_async_update_success(
         self,
         mock_hass,
@@ -145,6 +187,37 @@ class TestEarlyAPICoordinator:
         await coordinator.async_update()
 
         assert coordinator.tracking_data == mock_tracking_response_active
+
+    @pytest.mark.asyncio
+    async def test_async_update_skips_fresh_activities(
+        self, mock_hass, mock_tracking_response_active
+    ):
+        """Test async_update doesn't refetch activities within the hour.
+
+        Regression coverage for the ACTIVITIES_REFRESH_INTERVAL staleness
+        check: a coordinator with a recent _activities_last_fetch should
+        skip _fetch_activities entirely and only hit the tracking endpoint.
+        """
+        from homeassistant.util.dt import utcnow
+
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._token = "cached_token"
+        coordinator._activities = {"activity_1": "Working"}
+        coordinator._activities_last_fetch = utcnow()
+
+        # Mock tracking request - the only call this update should make
+        tracking_response = MagicMock()
+        tracking_response.status_code = 200
+        tracking_response.json.return_value = mock_tracking_response_active
+        tracking_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [tracking_response]
+
+        await coordinator.async_update()
+
+        assert coordinator.tracking_data == mock_tracking_response_active
+        assert coordinator._activities == {"activity_1": "Working"}
+        mock_hass.async_add_executor_job.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_async_update_token_refresh(

@@ -27,6 +27,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
+from .util import is_bluetooth_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up EARLY sensor from a config entry."""
     # Check if this is a Bluetooth device or API configuration
-    if "address" in config_entry.data:
+    if is_bluetooth_entry(config_entry):
         # This is a Bluetooth device - delegate to bluetooth_sensor
         from .bluetooth_sensor import async_setup_bluetooth_entry
 
@@ -115,20 +116,42 @@ class EarlyAPICoordinator:
             _LOGGER.error("Error getting EARLY API token: %s", err)
             raise
 
+    async def _make_request(
+        self, method: str, url: str, **kwargs: Any
+    ) -> requests.Response:
+        """Perform a single authenticated request using the current token."""
+        token = await self._get_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        return await self.hass.async_add_executor_job(
+            lambda: getattr(requests, method)(
+                url, headers=headers, timeout=10, **kwargs
+            )
+        )
+
+    async def _request_with_retry(
+        self, method: str, url: str, **kwargs: Any
+    ) -> requests.Response:
+        """Perform an authenticated request, retrying once if the token expired.
+
+        Shared by every EARLY API call site (activity fetch, tracking
+        status, start/stop tracking) so the 401-detect -> reset token ->
+        retry behavior only needs to be implemented once.
+        """
+        response = await self._make_request(method, url, **kwargs)
+
+        if response.status_code == 401:
+            # Token expired, reset and try again
+            _LOGGER.debug("Token expired, resetting")
+            self._token = None
+            response = await self._make_request(method, url, **kwargs)
+
+        response.raise_for_status()
+        return response
+
     async def _fetch_activities(self) -> None:
         """Fetch activities list to map activity IDs to names."""
         try:
-            token = await self._get_token()
-            headers = {"Authorization": f"Bearer {token}"}
-
-            response = await self.hass.async_add_executor_job(
-                lambda: requests.get(
-                    API_ACTIVITIES_ENDPOINT,
-                    headers=headers,
-                    timeout=10,
-                )
-            )
-            response.raise_for_status()
+            response = await self._request_with_retry("get", API_ACTIVITIES_ENDPOINT)
             data = response.json()
 
             # Build a mapping of activity ID to activity name
@@ -144,7 +167,14 @@ class EarlyAPICoordinator:
                 for activity in data["activities"]:
                     device_side = activity.get("deviceSide")
                     if device_side is not None:
-                        # deviceSide is the orientation number (0-8)
+                        # deviceSide is the orientation number reported by
+                        # the tracker (0-8): 1-8 are the physical sides, and
+                        # 0 means the tracker is resting on its base with no
+                        # side selected. Activities are only ever assigned to
+                        # sides 1-8 in the EARLY app, so a deviceSide of 0
+                        # should not normally appear here - if it does, it's
+                        # treated like any other side and simply won't match
+                        # anything meaningful via get_activity_by_device_side.
                         self._device_side_mapping[int(device_side)] = activity.get(
                             "name", "Unknown Activity"
                         )
@@ -167,9 +197,6 @@ class EarlyAPICoordinator:
     async def async_update(self) -> None:
         """Fetch data from EARLY API."""
         try:
-            token = await self._get_token()
-            headers = {"Authorization": f"Bearer {token}"}
-
             # Refresh activities at startup and at most once per hour
             activities_stale = (
                 not self._activities
@@ -180,29 +207,7 @@ class EarlyAPICoordinator:
                 await self._fetch_activities()
 
             # Fetch current tracking status
-            response = await self.hass.async_add_executor_job(
-                lambda: requests.get(
-                    API_TRACKING_ENDPOINT,
-                    headers=headers,
-                    timeout=10,
-                )
-            )
-
-            if response.status_code == 401:
-                # Token expired, reset and try again
-                _LOGGER.debug("Token expired, resetting")
-                self._token = None
-                token = await self._get_token()
-                headers = {"Authorization": f"Bearer {token}"}
-                response = await self.hass.async_add_executor_job(
-                    lambda: requests.get(
-                        API_TRACKING_ENDPOINT,
-                        headers=headers,
-                        timeout=10,
-                    )
-                )
-
-            response.raise_for_status()
+            response = await self._request_with_retry("get", API_TRACKING_ENDPOINT)
             self._tracking_data = response.json()
             _LOGGER.debug("Updated EARLY tracking data: %s", self._tracking_data)
 
@@ -230,36 +235,8 @@ class EarlyAPICoordinator:
     async def start_tracking(self, activity_id: str) -> None:
         """Start tracking a specific activity."""
         try:
-            token = await self._get_token()
-            headers = {"Authorization": f"Bearer {token}"}
-
-            # Build the tracking start endpoint
             endpoint = f"{API_TRACKING_ENDPOINT}/{activity_id}/start"
-
-            response = await self.hass.async_add_executor_job(
-                lambda: requests.post(
-                    endpoint,
-                    headers=headers,
-                    json={},
-                    timeout=10,
-                )
-            )
-
-            if response.status_code == 401:
-                # Token expired, reset and try again
-                self._token = None
-                token = await self._get_token()
-                headers = {"Authorization": f"Bearer {token}"}
-                response = await self.hass.async_add_executor_job(
-                    lambda: requests.post(
-                        endpoint,
-                        headers=headers,
-                        json={},
-                        timeout=10,
-                    )
-                )
-
-            response.raise_for_status()
+            await self._request_with_retry("post", endpoint, json={})
             _LOGGER.debug("Started tracking activity %s", activity_id)
 
             # Update tracking data immediately
@@ -274,36 +251,8 @@ class EarlyAPICoordinator:
     async def stop_tracking(self) -> None:
         """Stop the current tracking."""
         try:
-            token = await self._get_token()
-            headers = {"Authorization": f"Bearer {token}"}
-
-            # Build the tracking stop endpoint
             endpoint = f"{API_TRACKING_ENDPOINT}/stop"
-
-            response = await self.hass.async_add_executor_job(
-                lambda: requests.post(
-                    endpoint,
-                    headers=headers,
-                    json={},
-                    timeout=10,
-                )
-            )
-
-            if response.status_code == 401:
-                # Token expired, reset and try again
-                self._token = None
-                token = await self._get_token()
-                headers = {"Authorization": f"Bearer {token}"}
-                response = await self.hass.async_add_executor_job(
-                    lambda: requests.post(
-                        endpoint,
-                        headers=headers,
-                        json={},
-                        timeout=10,
-                    )
-                )
-
-            response.raise_for_status()
+            await self._request_with_retry("post", endpoint, json={})
             _LOGGER.debug("Stopped tracking")
 
             # Update tracking data immediately

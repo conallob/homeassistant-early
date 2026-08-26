@@ -94,24 +94,17 @@ async def async_setup_bluetooth_entry(
     async_add_entities(sensors, True)
 
 
-class EarlyTrackerOrientationSensor(SensorEntity):
-    """Representation of an EARLY tracker orientation sensor."""
+class _EarlyTrackerEntity(SensorEntity):
+    """Base class for EARLY Bluetooth tracker sensors.
 
-    def __init__(
-        self,
-        device: EarlyBluetoothDevice,
-        config_entry: ConfigEntry,
-    ) -> None:
-        """Initialize the sensor."""
+    Provides the device_info shared by every sensor for a given tracker,
+    so it's defined once instead of once per sensor class.
+    """
+
+    def __init__(self, device: EarlyBluetoothDevice, config_entry: ConfigEntry) -> None:
+        """Initialize the entity."""
         self._device = device
         self._config_entry = config_entry
-        self._attr_name = f"{device.name} Orientation"
-        self._attr_unique_id = f"{device.address}_orientation"
-        self._attr_icon = "mdi:axis-z-rotate-counterclockwise"
-        self._attr_native_unit_of_measurement = None
-
-        # Register callback for orientation changes
-        self._device.register_callback(self._handle_orientation_change)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -123,6 +116,25 @@ class EarlyTrackerOrientationSensor(SensorEntity):
             model="ZEI Tracker",
             connections={(bluetooth.DOMAIN, self._device.address)},
         )
+
+
+class EarlyTrackerOrientationSensor(_EarlyTrackerEntity):
+    """Representation of an EARLY tracker orientation sensor."""
+
+    def __init__(
+        self,
+        device: EarlyBluetoothDevice,
+        config_entry: ConfigEntry,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(device, config_entry)
+        self._attr_name = f"{device.name} Orientation"
+        self._attr_unique_id = f"{device.address}_orientation"
+        self._attr_icon = "mdi:axis-z-rotate-counterclockwise"
+        self._attr_native_unit_of_measurement = None
+
+        # Register callback for orientation changes
+        self._device.register_callback(self._handle_orientation_change)
 
     @property
     def native_value(self) -> int:
@@ -152,7 +164,7 @@ class EarlyTrackerOrientationSensor(SensorEntity):
         self._device.unregister_callback(self._handle_orientation_change)
 
 
-class EarlyTrackerRSSISensor(SensorEntity):
+class EarlyTrackerRSSISensor(_EarlyTrackerEntity):
     """Representation of an EARLY tracker RSSI sensor."""
 
     def __init__(
@@ -161,24 +173,12 @@ class EarlyTrackerRSSISensor(SensorEntity):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the sensor."""
-        self._device = device
-        self._config_entry = config_entry
+        super().__init__(device, config_entry)
         self._attr_name = f"{device.name} Signal Strength"
         self._attr_unique_id = f"{device.address}_rssi"
         self._attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
         self._attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
         self._attr_entity_registry_enabled_default = False
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._device.address)},
-            name=self._device.name,
-            manufacturer="Timeular",
-            model="ZEI Tracker",
-            connections={(bluetooth.DOMAIN, self._device.address)},
-        )
 
     @property
     def native_value(self) -> int:
@@ -191,7 +191,7 @@ class EarlyTrackerRSSISensor(SensorEntity):
         return self._device.is_connected
 
 
-class EarlyTrackerCurrentActivitySensor(SensorEntity):
+class EarlyTrackerCurrentActivitySensor(_EarlyTrackerEntity):
     """Representation of an EARLY tracker current activity sensor based on orientation."""
 
     def __init__(
@@ -201,8 +201,7 @@ class EarlyTrackerCurrentActivitySensor(SensorEntity):
         coordinator: EarlyAPICoordinator,
     ) -> None:
         """Initialize the sensor."""
-        self._device = device
-        self._config_entry = config_entry
+        super().__init__(device, config_entry)
         self._coordinator = coordinator
         self._attr_name = f"{device.name} Current Activity"
         self._attr_unique_id = f"{device.address}_current_activity"
@@ -212,19 +211,16 @@ class EarlyTrackerCurrentActivitySensor(SensorEntity):
         self._device.register_callback(self._handle_orientation_change)
 
     @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._device.address)},
-            name=self._device.name,
-            manufacturer="Timeular",
-            model="ZEI Tracker",
-            connections={(bluetooth.DOMAIN, self._device.address)},
-        )
-
-    @property
     def _current_activity_name(self) -> str | None:
-        """Look up the activity name for the current orientation (single lookup)."""
+        """Look up the activity name for the current orientation.
+
+        Deliberately not cached across native_value/extra_state_attributes
+        reads within the same state-write cycle: the coordinator's activity
+        mapping can refresh independently of orientation changes (up to
+        once an hour), and caching on orientation change alone would risk
+        serving a stale name until the tracker next moves. The extra dict
+        lookup this costs is negligible next to that correctness risk.
+        """
         orientation = self._device.orientation
         if orientation is None:
             return None
