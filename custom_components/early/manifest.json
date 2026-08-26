@@ -11,6 +11,7 @@
   "dependencies": ["bluetooth"],
   "documentation": "https://www.github.com/conallob/homeassistant-early",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/conallob/homeassistant-early/issues",
   "requirements": ["requests>=2.31.0"],
   "version": "1.2.0"
 }
