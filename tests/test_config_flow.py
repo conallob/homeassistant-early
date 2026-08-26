@@ -170,10 +170,23 @@ class TestConfigFlow:
         flow = ConfigFlow()
         flow.hass = mock_hass
 
-        with patch("requests.post") as mock_post:
+        with patch("custom_components.early.config_flow.requests.post") as mock_post:
             mock_response = MagicMock()
             mock_response.status_code = 401
+            # validate_input's except clauses treat requests.RequestException
+            # (which HTTPError is a subclass of) as CannotConnect and
+            # anything else as InvalidAuth - a generic Exception here is
+            # what actually exercises the "invalid_auth" error path.
+            mock_response.raise_for_status.side_effect = Exception("Unauthorized")
             mock_post.return_value = mock_response
+
+            # Make async_add_executor_job execute the lambda immediately,
+            # so mock_post is actually invoked instead of an unawaited
+            # AsyncMock silently short-circuiting the request.
+            async def mock_executor(func):
+                return func()
+
+            mock_hass.async_add_executor_job = mock_executor
 
             result = await flow.async_step_user(
                 user_input={
@@ -182,6 +195,7 @@ class TestConfigFlow:
                 }
             )
 
+            mock_post.assert_called_once()
             assert result["type"] == FlowResultType.FORM
             assert result["errors"] == {"base": "invalid_auth"}
 

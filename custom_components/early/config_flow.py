@@ -47,9 +47,6 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         )
         response.raise_for_status()
 
-        if response.status_code != 200:
-            raise InvalidAuth
-
         # Extract the token from the response
         token_data = response.json()
         if "token" not in token_data:

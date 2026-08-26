@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant, callback
 
 from .bluetooth import EarlyBluetoothDevice
 from .const import BLE_SERVICE_UUID, DEVICE_NAME_PREFIX, DOMAIN
+from .util import is_bluetooth_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, [Platform.SWITCH])
 
     # Register for bluetooth discovery if this is a bluetooth setup
-    if "address" in entry.data:
+    if is_bluetooth_entry(entry):
         # This is a bluetooth device entry
         @callback
         def _async_bluetooth_callback(
