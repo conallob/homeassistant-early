@@ -137,6 +137,7 @@ class TestManifest:
             "bluetooth",
             "after_dependencies",
             "integration_type",
+            "issue_tracker",
         ]
 
         for field in manifest.keys():
