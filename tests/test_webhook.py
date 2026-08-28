@@ -143,6 +143,41 @@ class TestAsyncSetupWebhook:
             assert "webhook_subscription_ids" not in entry_data
 
     @pytest.mark.asyncio
+    async def test_partial_subscription_success_logs_a_warning(
+        self, mock_hass, mock_config_entry, coordinator, caplog
+    ):
+        """Test a partially-subscribed webhook is logged at warning, not debug.
+
+        Each event is subscribed independently, so it's possible for only
+        one of trackingStarted/trackingStopped to succeed. That's a silent,
+        easy-to-miss asymmetry (one direction updates instantly, the other
+        waits for the next poll) that deserves more visibility than the
+        normal debug-level "registered" summary.
+        """
+        coordinator.async_subscribe_webhook = AsyncMock(
+            side_effect=lambda event, url: (
+                "sub_started" if event == "trackingStarted" else None
+            )
+        )
+        mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+
+        with patch(
+            "custom_components.early.webhook.get_url",
+            return_value="https://ha.example.com",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_id",
+            return_value="test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_register"
+        ):
+            with caplog.at_level("WARNING", logger="custom_components.early.webhook"):
+                await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
+
+            assert any(
+                "partially registered" in record.message for record in caplog.records
+            )
+
+    @pytest.mark.asyncio
     async def test_webhook_handler_triggers_unthrottled_refresh(
         self, mock_hass, mock_config_entry, coordinator
     ):

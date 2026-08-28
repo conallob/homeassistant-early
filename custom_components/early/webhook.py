@@ -58,6 +58,16 @@ WEBHOOK_EVENTS = (WEBHOOK_EVENT_TRACKING_STARTED, WEBHOOK_EVENT_TRACKING_STOPPED
 # Config-entry data key this module uses to remember a webhook it created,
 # purely so a subsequent setup (e.g. after a non-graceful restart) can find
 # and clean up a subscription async_unload_webhook never got the chance to.
+#
+# This is a deliberate departure from config_flow.py's convention that
+# .data holds only config-flow-produced credentials (API creds for a plain
+# Cloud API entry, or optionally in .options for a Bluetooth entry - see
+# CLAUDE.md): this state needs to survive exactly the same non-graceful
+# restart that skips async_unload_entry, so .data (which persists to
+# storage independently of any reload) is what actually solves the
+# problem, at the cost of showing up alongside real credentials in
+# diagnostics dumps. No update listener is registered on this entry, so
+# writing to it here never triggers a reload.
 WEBHOOK_STATE_KEY = "_early_webhook_state"
 
 # The webhook_id's obscurity is the only access control on the endpoint -
@@ -65,7 +75,10 @@ WEBHOOK_STATE_KEY = "_early_webhook_state"
 # the coordinator's normal @Throttle via no_throttle=True, anyone who
 # obtains the URL could otherwise force unlimited live calls to EARLY's
 # API. This bounds that to one unthrottled refresh per interval; faster
-# hits fall back to a normal (still-throttled) async_update() call.
+# hits fall back to a normal (still-throttled) async_update() call. It
+# bounds the worst case to a steady drip of one live EARLY API call per
+# interval, indefinitely, for as long as the URL is hit that often - not
+# "no further effect" past the first call.
 WEBHOOK_MIN_REFRESH_INTERVAL = timedelta(seconds=2)
 
 
@@ -212,12 +225,30 @@ async def async_setup_webhook(
             },
         },
     )
-    _LOGGER.debug(
-        "EARLY webhook registered for entry %s (%d/%d events subscribed)",
-        entry.entry_id,
-        len(subscription_ids),
-        len(WEBHOOK_EVENTS),
-    )
+
+    if len(subscription_ids) < len(WEBHOOK_EVENTS):
+        # Each event is subscribed independently, so it's possible for
+        # e.g. trackingStarted to subscribe but trackingStopped to fail
+        # (or vice versa). That's a silent, easy-to-miss asymmetry -
+        # starting an activity would push instantly while stopping one
+        # waits for the next poll, or vice versa - so it's worth a
+        # warning rather than the debug-level summary below.
+        _LOGGER.warning(
+            "EARLY webhook only partially registered for entry %s (%d/%d "
+            "events subscribed: %s) - the unsubscribed event(s) will only "
+            "update on the next poll",
+            entry.entry_id,
+            len(subscription_ids),
+            len(WEBHOOK_EVENTS),
+            ", ".join(sorted(subscription_ids)),
+        )
+    else:
+        _LOGGER.debug(
+            "EARLY webhook registered for entry %s (%d/%d events subscribed)",
+            entry.entry_id,
+            len(subscription_ids),
+            len(WEBHOOK_EVENTS),
+        )
 
 
 async def async_unload_webhook(
