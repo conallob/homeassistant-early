@@ -135,11 +135,12 @@ async def async_setup_webhook(
     webhook_url = f"{base_url}{webhook.async_generate_path(webhook_id)}"
 
     last_refresh_at = {"time": None}
-    # Guards the check-then-set on last_refresh_at below: two webhook calls
-    # arriving close together each hit their own "await request.json()"
-    # first, so without this lock both could still observe the old
-    # last_refresh_at value and take the no_throttle=True path, defeating
-    # the rate limit.
+    # Guards the check-then-set on last_refresh_at below. There's currently
+    # no await between a call entering _handle_webhook and this check, so
+    # two bare concurrent calls can't actually interleave here today - but
+    # this keeps the check-then-set correct if that ever changes (e.g. an
+    # await is added before it for some other reason), rather than relying
+    # on that absence of an await as an implicit invariant.
     rate_limit_lock = asyncio.Lock()
 
     async def _handle_webhook(
@@ -147,13 +148,13 @@ async def async_setup_webhook(
     ) -> web.Response:
         """Handle an incoming EARLY tracking webhook call.
 
-        The payload isn't parsed for tracking state - EARLY's tracking
+        The request body is never read or parsed - EARLY's tracking
         endpoint (already polled by the coordinator) is the single source
         of truth the rest of this integration trusts, so a webhook call of
         either event just triggers an immediate refresh from that endpoint
-        instead of duplicating state-parsing logic here. Both the body
-        parse and the refresh are guarded so nothing here can ever raise
-        out of the aiohttp view.
+        instead of duplicating state-parsing logic here. The refresh
+        itself is guarded so nothing here can ever raise out of the
+        aiohttp view.
 
         The webhook_id's obscurity is the only access control on this
         endpoint, so an unthrottled (no_throttle=True) refresh is only
@@ -162,11 +163,6 @@ async def async_setup_webhook(
         the interval just falls through to a normal, still-throttled
         async_update() call instead of forcing another live EARLY API call.
         """
-        try:
-            await request.json()
-        except ValueError:
-            _LOGGER.debug("Received EARLY webhook call with a non-JSON body")
-
         async with rate_limit_lock:
             now = utcnow()
             allow_immediate = (

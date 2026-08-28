@@ -202,7 +202,6 @@ class TestAsyncSetupWebhook:
             await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
 
         request = MagicMock()
-        request.json = AsyncMock(return_value={"type": "trackingStarted"})
 
         response = await captured_handler["handler"](
             mock_hass, "test_webhook_id", request
@@ -212,10 +211,21 @@ class TestAsyncSetupWebhook:
         assert response.status == 200
 
     @pytest.mark.asyncio
-    async def test_webhook_handler_tolerates_invalid_json(
+    async def test_webhook_handler_never_reads_the_request_body(
         self, mock_hass, mock_config_entry, coordinator
     ):
-        """Test the handler still refreshes even if the body isn't valid JSON."""
+        """Test the handler refreshes without ever reading/parsing the body.
+
+        Regression coverage: the handler previously called
+        `await request.json()` and only caught ValueError around it, which
+        didn't match its own documented invariant that nothing in this
+        handler can ever raise - request.json() can fail in ways that
+        aren't a ValueError (e.g. an I/O error reading the body). Since
+        the parsed result was never used anyway (the tracking endpoint is
+        always re-fetched regardless of payload contents), the body is now
+        never read at all. A MagicMock with no working json() attribute
+        would raise if the handler tried to await it.
+        """
         mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
         captured_handler = {}
 
@@ -235,12 +245,13 @@ class TestAsyncSetupWebhook:
             await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
 
         request = MagicMock()
-        request.json = AsyncMock(side_effect=ValueError("bad json"))
+        request.json = AsyncMock(side_effect=AssertionError("body should not be read"))
 
         response = await captured_handler["handler"](
             mock_hass, "test_webhook_id", request
         )
 
+        request.json.assert_not_called()
         coordinator.async_update.assert_called_once_with(no_throttle=True)
         assert response.status == 200
 
@@ -276,7 +287,6 @@ class TestAsyncSetupWebhook:
             await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
 
         request = MagicMock()
-        request.json = AsyncMock(return_value={"type": "trackingStarted"})
 
         response = await captured_handler["handler"](
             mock_hass, "test_webhook_id", request
@@ -316,7 +326,6 @@ class TestAsyncSetupWebhook:
             await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
 
         request = MagicMock()
-        request.json = AsyncMock(return_value={"type": "trackingStarted"})
 
         await captured_handler["handler"](mock_hass, "test_webhook_id", request)
         await captured_handler["handler"](mock_hass, "test_webhook_id", request)
@@ -352,7 +361,6 @@ class TestAsyncSetupWebhook:
             await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
 
         request = MagicMock()
-        request.json = AsyncMock(return_value={"type": "trackingStarted"})
 
         base_time = utcnow()
         with patch("custom_components.early.webhook.utcnow", return_value=base_time):
@@ -375,11 +383,16 @@ class TestAsyncSetupWebhook:
     ):
         """Test two webhook calls arriving together only get one unthrottled refresh.
 
-        Regression coverage: the rate-limit check-then-set on
-        last_refresh_at previously wasn't guarded by a lock. Two calls
-        each await request.json() first, so without the lock both could
-        resume and observe the same "no previous refresh" state before
-        either writes it, and both would take the no_throttle=True path.
+        The handler no longer reads the request body, so there's currently
+        no await between entering _handle_webhook and the rate_limit_lock -
+        meaning two bare asyncio.gather()'d calls can't actually interleave
+        before either reaches the lock (Python's cooperative scheduling
+        only switches at a real await/suspension point). This test still
+        asserts the outcome an interleaving would break, so it keeps
+        guarding the invariant if a future change ever adds an await
+        before the check (e.g. reading the body again for some reason) -
+        the asyncio.Lock around the check-then-set is what would keep this
+        assertion true even then.
         """
         mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
         captured_handler = {}
@@ -399,16 +412,7 @@ class TestAsyncSetupWebhook:
         ):
             await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
 
-        # request.json() yields control (like a real await on I/O would),
-        # giving both concurrent handler calls a chance to interleave
-        # before either reaches the rate-limit check.
         request = MagicMock()
-
-        async def yielding_json():
-            await asyncio.sleep(0)
-            return {"type": "trackingStarted"}
-
-        request.json = yielding_json
 
         await asyncio.gather(
             captured_handler["handler"](mock_hass, "test_webhook_id", request),
@@ -518,9 +522,6 @@ class TestWebhookSurvivesRestart:
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="new_webhook_id",
         ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/new_webhook_id",
-        ), patch(
             "custom_components.early.webhook.webhook.async_register"
         ):
             await async_setup_webhook(
@@ -588,9 +589,6 @@ class TestWebhookSurvivesRestart:
         ), patch(
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="new_webhook_id",
-        ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/new_webhook_id",
         ), patch(
             "custom_components.early.webhook.webhook.async_register"
         ):
