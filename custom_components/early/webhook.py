@@ -92,8 +92,16 @@ async def _async_forget_previous_subscription(
     if not previous_state:
         return
 
-    for subscription_id in previous_state.get("subscription_ids", {}).values():
-        await coordinator.async_unsubscribe_webhook(subscription_id)
+    subscription_ids = previous_state.get("subscription_ids", {}).values()
+    if subscription_ids:
+        # The events are unsubscribed independently of each other, so
+        # there's no reason to serialize these network calls.
+        await asyncio.gather(
+            *(
+                coordinator.async_unsubscribe_webhook(subscription_id)
+                for subscription_id in subscription_ids
+            )
+        )
 
     hass.config_entries.async_update_entry(
         entry,
@@ -197,11 +205,21 @@ async def async_setup_webhook(
     entry_data = hass.data[DOMAIN][entry.entry_id]
     entry_data["webhook_id"] = webhook_id
 
-    subscription_ids = {}
-    for event in WEBHOOK_EVENTS:
-        subscription_id = await coordinator.async_subscribe_webhook(event, webhook_url)
-        if subscription_id:
-            subscription_ids[event] = subscription_id
+    # The events are subscribed independently of each other, so there's no
+    # reason to serialize these network calls - each is already caught and
+    # turned into a None by async_subscribe_webhook, so a failure on one
+    # can't affect the other's result here.
+    results = await asyncio.gather(
+        *(
+            coordinator.async_subscribe_webhook(event, webhook_url)
+            for event in WEBHOOK_EVENTS
+        )
+    )
+    subscription_ids = {
+        event: subscription_id
+        for event, subscription_id in zip(WEBHOOK_EVENTS, results)
+        if subscription_id
+    }
 
     if not subscription_ids:
         # EARLY never accepted a subscription (no webhook support on this
@@ -255,10 +273,15 @@ async def async_unload_webhook(
     """Unregister the local webhook endpoint and unsubscribe from EARLY."""
     entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
     webhook_id = entry_data.pop("webhook_id", None)
-    subscription_ids = entry_data.pop("webhook_subscription_ids", {})
+    subscription_ids = entry_data.pop("webhook_subscription_ids", {}).values()
 
-    for subscription_id in subscription_ids.values():
-        await coordinator.async_unsubscribe_webhook(subscription_id)
+    if subscription_ids:
+        await asyncio.gather(
+            *(
+                coordinator.async_unsubscribe_webhook(subscription_id)
+                for subscription_id in subscription_ids
+            )
+        )
 
     if webhook_id:
         webhook.async_unregister(hass, webhook_id)

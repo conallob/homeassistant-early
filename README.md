@@ -297,6 +297,13 @@ URL: it isn't logged or displayed anywhere in the Home Assistant UI, and
 there's no need to share it outside of Home Assistant's own webhook
 configuration.
 
+Starting and stopping tracking share the same rate limit: if you switch
+activities quickly (stop one, immediately start another), the second
+change within that couple-of-seconds window falls back to the regular
+30-second poll instead of updating instantly - still no worse than
+before this feature existed, just not always "immediate" for a rapid
+switch.
+
 ### Bluetooth Tracker
 
 The integration communicates with EARLY ZEI trackers using Bluetooth Low Energy (BLE):

@@ -87,6 +87,43 @@ class TestIntegrationSetup:
             mock_setup_webhook.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_async_setup_entry_sets_up_webhook_for_bluetooth_with_api(
+        self, mock_hass, mock_bluetooth_config_entry_with_api
+    ):
+        """Test webhook setup also runs for a Bluetooth entry with API credentials.
+
+        CLAUDE.md calls out that a Bluetooth entry can also carry API
+        credentials (bluetooth_sensor.py stores its coordinator under the
+        same "coordinator" key sensor.py uses for plain API entries) - the
+        webhook setup check in async_setup_entry must key off whether a
+        coordinator exists, not off is_bluetooth_entry(), or this combined
+        case would silently never get webhook support. This test would
+        catch a future change that accidentally gated webhook setup on
+        "not is_bluetooth_entry(entry)".
+        """
+
+        async def _fake_forward(entry, platforms):
+            if platforms == [Platform.SENSOR]:
+                mock_hass.data[DOMAIN][entry.entry_id]["coordinator"] = MagicMock()
+            return True
+
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
+            side_effect=_fake_forward
+        )
+
+        with patch(
+            "custom_components.early.async_setup_webhook", new_callable=AsyncMock
+        ) as mock_setup_webhook, patch(
+            "homeassistant.components.bluetooth.async_register_callback"
+        ):
+            result = await async_setup_entry(
+                mock_hass, mock_bluetooth_config_entry_with_api
+            )
+
+            assert result is True
+            mock_setup_webhook.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_async_setup_entry_skips_webhook_without_coordinator(
         self, mock_hass, mock_config_entry
     ):
