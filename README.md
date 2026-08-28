@@ -289,6 +289,14 @@ refresh it triggers waits for that poll to finish rather than jumping
 ahead of it - this keeps the update logic race-free at a small latency
 cost if the EARLY API happens to be slow to respond at that moment.
 
+The webhook URL registered with EARLY is unguessable but unauthenticated -
+anyone who obtains it can trigger a tracking refresh (never fake tracking
+data, since every call just re-fetches from EARLY's own API), rate-limited
+to at most once every couple of seconds. Treat it like any other secret
+URL: it isn't logged or displayed anywhere in the Home Assistant UI, and
+there's no need to share it outside of Home Assistant's own webhook
+configuration.
+
 ### Bluetooth Tracker
 
 The integration communicates with EARLY ZEI trackers using Bluetooth Low Energy (BLE):
