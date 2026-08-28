@@ -7,7 +7,7 @@ A custom Home Assistant integration for [EARLY](https://early.app) (formerly kno
 ### Cloud API Integration
 - **Current Activity Sensor**: Displays the currently tracked activity via cloud API, by name (not just whether tracking is on or off)
 - **Activity Attributes**: Provides additional details like activity ID, name, start time, and notes
-- **Automatic Updates**: Polls the EARLY API every 30 seconds for current tracking status
+- **Automatic Updates**: Polls the EARLY API every 30 seconds for current tracking status, and refreshes immediately on a webhook callback when Home Assistant has a publicly reachable URL (see [Update Latency](#update-latency) below)
 - **Per-Activity Switches**: Every activity configured in your EARLY account is exposed as its own `switch` entity, so you can start/stop tracking a specific activity from an automation, dashboard tile, or phone widget
 
 ### Bluetooth Tracker Support
@@ -262,6 +262,26 @@ A phone Shortcuts automation ("if I open my work phone after 6pm") can call the 
 This integration uses the EARLY Public API v3:
 - **Base URL**: `https://api.timeular.com/api/v3`
 - **Documentation**: [https://developers.early.app](https://developers.early.app)
+
+#### Update Latency
+
+By default, the Cloud API sensor and activity switches update by polling
+the EARLY API every 30 seconds, so a change made in another app (or on the
+physical tracker) can take up to 30 seconds to show up in Home Assistant.
+
+If Home Assistant has a publicly reachable URL that EARLY's servers can
+reach (e.g. Home Assistant Cloud/Nabu Casa, or your own reverse proxy —
+see [Home Assistant's URL configuration
+docs](https://www.home-assistant.io/integrations/homeassistant/#external_url)),
+this integration also registers a webhook and subscribes it to EARLY's
+`trackingStarted`/`trackingStopped` events, so tracking changes are
+reflected immediately instead of waiting for the next poll. This is a pure
+optimization on top of polling, not a replacement for it: if no public URL
+is configured, or EARLY doesn't accept the webhook subscription, the
+integration keeps working exactly as before, on 30-second polling alone.
+No setup is required beyond having a public URL configured in Home
+Assistant - the integration handles subscribing/unsubscribing itself and
+falls back silently if that's not possible.
 
 ### Bluetooth Tracker
 
