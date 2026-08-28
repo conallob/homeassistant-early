@@ -736,6 +736,36 @@ class TestEarlyAPICoordinatorListeners:
         assert subscription_id is None
 
     @pytest.mark.asyncio
+    async def test_async_subscribe_webhook_malformed_response_returns_none(
+        self, mock_hass
+    ):
+        """Test an unexpected response shape returns None instead of raising.
+
+        Regression coverage: only requests.exceptions.RequestException was
+        caught, so a response whose body isn't a JSON object (e.g.
+        response.json() returning a list, or the request having already
+        succeeded with EARLY but returning a body .get("id") can't be
+        called on) would raise out of async_subscribe_webhook, out of the
+        subscribe loop in webhook.py, and potentially out of entry setup -
+        which doesn't match the rest of this module's "never leak or
+        crash" design.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._token = "cached_token"
+
+        response = MagicMock()
+        response.status_code = 200
+        response.raise_for_status = MagicMock()
+        response.json.return_value = ["unexpected", "list", "body"]
+        mock_hass.async_add_executor_job.side_effect = [response]
+
+        subscription_id = await coordinator.async_subscribe_webhook(
+            "trackingStarted", "https://ha.example.com/api/webhook/abc"
+        )
+
+        assert subscription_id is None
+
+    @pytest.mark.asyncio
     async def test_async_unsubscribe_webhook_success(self, mock_hass):
         """Test unsubscribing a webhook subscription."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")

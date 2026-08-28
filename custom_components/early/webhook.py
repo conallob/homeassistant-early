@@ -65,9 +65,11 @@ WEBHOOK_EVENTS = (WEBHOOK_EVENT_TRACKING_STARTED, WEBHOOK_EVENT_TRACKING_STOPPED
 # CLAUDE.md): this state needs to survive exactly the same non-graceful
 # restart that skips async_unload_entry, so .data (which persists to
 # storage independently of any reload) is what actually solves the
-# problem, at the cost of showing up alongside real credentials in
-# diagnostics dumps. No update listener is registered on this entry, so
-# writing to it here never triggers a reload.
+# problem, at the cost of sitting alongside real credentials in this
+# dict - worth remembering if this integration ever adds diagnostics
+# support (there's no diagnostics.py today) and needs a
+# credential-redaction list. No update listener is registered on this
+# entry, so writing to it here never triggers a reload.
 WEBHOOK_STATE_KEY = "_early_webhook_state"
 
 # The webhook_id's obscurity is the only access control on the endpoint -

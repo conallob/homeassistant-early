@@ -339,6 +339,19 @@ class EarlyAPICoordinator:
                 "Could not subscribe to EARLY webhook event %s: %s", event, err
             )
             return None
+        except Exception:  # pylint: disable=broad-except
+            # An unexpected response shape (e.g. a body that isn't a JSON
+            # object) means the POST above may still have created a live
+            # subscription on EARLY's side, even though we can't recover
+            # its id to track/unsubscribe it later. There's nothing more
+            # useful to do here than what a request failure already does -
+            # log it and let the caller treat this event as unsubscribed,
+            # rather than letting it crash webhook setup or getting
+            # silently swallowed further up the call stack.
+            _LOGGER.exception(
+                "Unexpected error subscribing to EARLY webhook event %s", event
+            )
+            return None
 
     async def async_unsubscribe_webhook(self, subscription_id: str) -> None:
         """Remove a previously created EARLY webhook subscription."""
