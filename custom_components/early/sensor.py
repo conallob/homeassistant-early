@@ -119,8 +119,12 @@ class EarlyAPICoordinator:
         Each callback is isolated so one misbehaving entity can't stop the
         others from being notified, or propagate out of async_update() and
         break the coordinator refresh (poll- or webhook-triggered) itself.
+        Iterates a snapshot rather than self._listeners directly, so a
+        listener that adds/removes a listener synchronously (none do
+        today) can't skip an entry or raise a mutated-during-iteration
+        error.
         """
-        for update_callback in self._listeners:
+        for update_callback in list(self._listeners):
             try:
                 update_callback()
             except Exception:  # pylint: disable=broad-except

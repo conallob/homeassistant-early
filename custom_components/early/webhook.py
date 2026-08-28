@@ -33,6 +33,7 @@ every time that happens.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 
@@ -99,11 +100,16 @@ async def async_setup_webhook(
     await _async_forget_previous_subscription(hass, entry, coordinator)
 
     try:
-        # Only used to confirm Home Assistant has a public URL at all; the
-        # actual callback URL below is built from the webhook_id via
-        # webhook.async_generate_url, which already resolves the same
-        # external base URL.
-        get_url(hass, allow_internal=False, allow_ip=False)
+        # Reused below to build webhook_url directly, rather than calling
+        # webhook.async_generate_url() - that helper makes its own
+        # get_url(prefer_external=True, allow_cloud=False) call with
+        # different defaults than this one (notably allow_internal=True
+        # and allow_cloud=False vs. this check's allow_cloud=True), which
+        # could silently resolve to a different URL. If it did, EARLY
+        # would still accept the subscription (it just points at a URL
+        # EARLY can never reach), so the mismatch would never get logged -
+        # it would just silently never fire, forever.
+        base_url = get_url(hass, allow_internal=False, allow_ip=False)
     except NoURLAvailableError:
         _LOGGER.info(
             "No externally reachable URL configured for Home Assistant; "
@@ -113,9 +119,15 @@ async def async_setup_webhook(
         return
 
     webhook_id = webhook.async_generate_id()
-    webhook_url = webhook.async_generate_url(hass, webhook_id)
+    webhook_url = f"{base_url}{webhook.async_generate_path(webhook_id)}"
 
     last_refresh_at = {"time": None}
+    # Guards the check-then-set on last_refresh_at below: two webhook calls
+    # arriving close together each hit their own "await request.json()"
+    # first, so without this lock both could still observe the old
+    # last_refresh_at value and take the no_throttle=True path, defeating
+    # the rate limit.
+    rate_limit_lock = asyncio.Lock()
 
     async def _handle_webhook(
         hass: HomeAssistant, received_webhook_id: str, request: web.Request
@@ -142,16 +154,18 @@ async def async_setup_webhook(
         except ValueError:
             _LOGGER.debug("Received EARLY webhook call with a non-JSON body")
 
-        now = utcnow()
-        allow_immediate = (
-            last_refresh_at["time"] is None
-            or now - last_refresh_at["time"] >= WEBHOOK_MIN_REFRESH_INTERVAL
-        )
+        async with rate_limit_lock:
+            now = utcnow()
+            allow_immediate = (
+                last_refresh_at["time"] is None
+                or now - last_refresh_at["time"] >= WEBHOOK_MIN_REFRESH_INTERVAL
+            )
+            if allow_immediate:
+                last_refresh_at["time"] = now
 
         _LOGGER.debug("Received EARLY webhook call; refreshing tracking status")
         try:
             if allow_immediate:
-                last_refresh_at["time"] = now
                 await coordinator.async_update(no_throttle=True)
             else:
                 await coordinator.async_update()

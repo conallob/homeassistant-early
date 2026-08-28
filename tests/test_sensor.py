@@ -598,6 +598,33 @@ class TestEarlyAPICoordinatorListeners:
         failing_callback.assert_called_once()
         healthy_callback.assert_called_once()
 
+    def test_notify_listeners_survives_mutation_during_iteration(self, mock_hass):
+        """Test removing a listener from within a callback doesn't break iteration.
+
+        Regression coverage: _notify_listeners previously iterated
+        self._listeners directly. Mutating that same list mid-iteration
+        (e.g. an entity's remove_listener firing as a side effect of its
+        own callback) would either skip the next listener or raise
+        "list changed size during iteration" - iterating a snapshot avoids
+        both.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        third_callback = MagicMock()
+
+        def self_removing_callback():
+            remove_second()
+
+        first_callback = MagicMock()
+        coordinator.add_listener(first_callback)
+        remove_second = coordinator.add_listener(self_removing_callback)
+        coordinator.add_listener(third_callback)
+
+        coordinator._notify_listeners()
+
+        first_callback.assert_called_once()
+        third_callback.assert_called_once()
+        assert len(coordinator._listeners) == 2
+
     @pytest.mark.asyncio
     async def test_async_update_holds_lock_for_its_duration(self, mock_hass):
         """Test the coordinator's update lock is held while a refresh is in flight.

@@ -1,5 +1,6 @@
 """Test the EARLY webhook module."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -68,9 +69,6 @@ class TestAsyncSetupWebhook:
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="test_webhook_id",
         ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/test_webhook_id",
-        ), patch(
             "custom_components.early.webhook.webhook.async_register"
         ) as mock_register:
             await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
@@ -81,6 +79,42 @@ class TestAsyncSetupWebhook:
             entry_data = mock_hass.data[DOMAIN][mock_config_entry.entry_id]
             assert entry_data["webhook_id"] == "test_webhook_id"
             assert len(entry_data["webhook_subscription_ids"]) == len(WEBHOOK_EVENTS)
+
+    @pytest.mark.asyncio
+    async def test_subscribed_url_is_built_from_the_reachability_check(
+        self, mock_hass, mock_config_entry, coordinator
+    ):
+        """Test the URL subscribed with EARLY comes from the same get_url() call.
+
+        Regression coverage: async_setup_webhook used to build webhook_url
+        via webhook.async_generate_url(), which makes its own separate
+        get_url() call with different defaults (allow_internal=True,
+        allow_cloud=False) than the reachability check just above it. If
+        those two calls ever resolved to different URLs, EARLY would
+        happily accept a subscription pointed at a URL it can never
+        reach - silently degrading to polling-only forever with nothing to
+        log, since the "subscribe" call itself would still succeed. Now
+        webhook_url is built directly from the checked URL, so the two
+        can't diverge.
+        """
+        mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+
+        with patch(
+            "custom_components.early.webhook.get_url",
+            return_value="https://ha.example.com",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_id",
+            return_value="test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_register"
+        ):
+            await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
+
+            for call in coordinator.async_subscribe_webhook.call_args_list:
+                _event, target_url = call.args
+                assert (
+                    target_url == "https://ha.example.com/api/webhook/test_webhook_id"
+                )
 
     @pytest.mark.asyncio
     async def test_unregisters_local_webhook_when_no_subscriptions_succeed(
@@ -96,9 +130,6 @@ class TestAsyncSetupWebhook:
         ), patch(
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="test_webhook_id",
-        ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/test_webhook_id",
         ), patch(
             "custom_components.early.webhook.webhook.async_register"
         ), patch(
@@ -128,9 +159,6 @@ class TestAsyncSetupWebhook:
         ), patch(
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="test_webhook_id",
-        ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/test_webhook_id",
         ), patch(
             "custom_components.early.webhook.webhook.async_register",
             side_effect=_capture_register,
@@ -164,9 +192,6 @@ class TestAsyncSetupWebhook:
         ), patch(
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="test_webhook_id",
-        ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/test_webhook_id",
         ), patch(
             "custom_components.early.webhook.webhook.async_register",
             side_effect=_capture_register,
@@ -209,9 +234,6 @@ class TestAsyncSetupWebhook:
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="test_webhook_id",
         ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/test_webhook_id",
-        ), patch(
             "custom_components.early.webhook.webhook.async_register",
             side_effect=_capture_register,
         ):
@@ -252,9 +274,6 @@ class TestAsyncSetupWebhook:
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="test_webhook_id",
         ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/test_webhook_id",
-        ), patch(
             "custom_components.early.webhook.webhook.async_register",
             side_effect=_capture_register,
         ):
@@ -291,9 +310,6 @@ class TestAsyncSetupWebhook:
             "custom_components.early.webhook.webhook.async_generate_id",
             return_value="test_webhook_id",
         ), patch(
-            "custom_components.early.webhook.webhook.async_generate_url",
-            return_value="https://ha.example.com/api/webhook/test_webhook_id",
-        ), patch(
             "custom_components.early.webhook.webhook.async_register",
             side_effect=_capture_register,
         ):
@@ -316,6 +332,59 @@ class TestAsyncSetupWebhook:
             ((), {"no_throttle": True}),
             ((), {"no_throttle": True}),
         ]
+
+    @pytest.mark.asyncio
+    async def test_webhook_handler_rate_limit_is_atomic_under_concurrency(
+        self, mock_hass, mock_config_entry, coordinator
+    ):
+        """Test two webhook calls arriving together only get one unthrottled refresh.
+
+        Regression coverage: the rate-limit check-then-set on
+        last_refresh_at previously wasn't guarded by a lock. Two calls
+        each await request.json() first, so without the lock both could
+        resume and observe the same "no previous refresh" state before
+        either writes it, and both would take the no_throttle=True path.
+        """
+        mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+        captured_handler = {}
+
+        def _capture_register(hass, domain, name, webhook_id, handler, **kwargs):
+            captured_handler["handler"] = handler
+
+        with patch(
+            "custom_components.early.webhook.get_url",
+            return_value="https://ha.example.com",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_id",
+            return_value="test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_register",
+            side_effect=_capture_register,
+        ):
+            await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
+
+        # request.json() yields control (like a real await on I/O would),
+        # giving both concurrent handler calls a chance to interleave
+        # before either reaches the rate-limit check.
+        request = MagicMock()
+
+        async def yielding_json():
+            await asyncio.sleep(0)
+            return {"type": "trackingStarted"}
+
+        request.json = yielding_json
+
+        await asyncio.gather(
+            captured_handler["handler"](mock_hass, "test_webhook_id", request),
+            captured_handler["handler"](mock_hass, "test_webhook_id", request),
+        )
+
+        no_throttle_calls = [
+            call
+            for call in coordinator.async_update.call_args_list
+            if call == ((), {"no_throttle": True})
+        ]
+        assert len(no_throttle_calls) == 1
 
 
 class TestAsyncUnloadWebhook:
