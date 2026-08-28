@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
+from homeassistant.util.dt import utcnow
 
 from custom_components.early.const import CONF_API_SECRET, DOMAIN
 from custom_components.early.webhook import (
@@ -225,6 +226,97 @@ class TestAsyncSetupWebhook:
 
         assert response.status == 200
 
+    @pytest.mark.asyncio
+    async def test_webhook_handler_rate_limits_unthrottled_refreshes(
+        self, mock_hass, mock_config_entry, coordinator
+    ):
+        """Test rapid webhook calls only force one unthrottled refresh.
+
+        The webhook_id's obscurity is the only access control on the
+        endpoint, and every hit otherwise bypasses the coordinator's
+        normal @Throttle via no_throttle=True. Calls arriving faster than
+        WEBHOOK_MIN_REFRESH_INTERVAL should fall back to a plain,
+        still-throttled async_update() instead of each forcing another
+        live EARLY API call.
+        """
+        mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+        captured_handler = {}
+
+        def _capture_register(hass, domain, name, webhook_id, handler, **kwargs):
+            captured_handler["handler"] = handler
+
+        with patch(
+            "custom_components.early.webhook.get_url",
+            return_value="https://ha.example.com",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_id",
+            return_value="test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_url",
+            return_value="https://ha.example.com/api/webhook/test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_register",
+            side_effect=_capture_register,
+        ):
+            await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
+
+        request = MagicMock()
+        request.json = AsyncMock(return_value={"type": "trackingStarted"})
+
+        await captured_handler["handler"](mock_hass, "test_webhook_id", request)
+        await captured_handler["handler"](mock_hass, "test_webhook_id", request)
+
+        assert coordinator.async_update.call_args_list == [
+            ((), {"no_throttle": True}),
+            ((), {}),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_webhook_handler_allows_immediate_refresh_after_interval(
+        self, mock_hass, mock_config_entry, coordinator
+    ):
+        """Test a call after WEBHOOK_MIN_REFRESH_INTERVAL gets an unthrottled refresh again."""
+        from custom_components.early.webhook import WEBHOOK_MIN_REFRESH_INTERVAL
+
+        mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+        captured_handler = {}
+
+        def _capture_register(hass, domain, name, webhook_id, handler, **kwargs):
+            captured_handler["handler"] = handler
+
+        with patch(
+            "custom_components.early.webhook.get_url",
+            return_value="https://ha.example.com",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_id",
+            return_value="test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_url",
+            return_value="https://ha.example.com/api/webhook/test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_register",
+            side_effect=_capture_register,
+        ):
+            await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
+
+        request = MagicMock()
+        request.json = AsyncMock(return_value={"type": "trackingStarted"})
+
+        base_time = utcnow()
+        with patch("custom_components.early.webhook.utcnow", return_value=base_time):
+            await captured_handler["handler"](mock_hass, "test_webhook_id", request)
+
+        with patch(
+            "custom_components.early.webhook.utcnow",
+            return_value=base_time + WEBHOOK_MIN_REFRESH_INTERVAL,
+        ):
+            await captured_handler["handler"](mock_hass, "test_webhook_id", request)
+
+        assert coordinator.async_update.call_args_list == [
+            ((), {"no_throttle": True}),
+            ((), {"no_throttle": True}),
+        ]
+
 
 class TestAsyncUnloadWebhook:
     """Test async_unload_webhook."""
@@ -333,6 +425,43 @@ class TestWebhookSurvivesRestart:
             coordinator.async_unsubscribe_webhook.assert_any_call("stale_sub_started")
             coordinator.async_unsubscribe_webhook.assert_any_call("stale_sub_stopped")
 
+            mock_hass.config_entries.async_update_entry.assert_any_call(
+                entry_with_stale_webhook_state,
+                data={
+                    CONF_API_KEY: "test_api_key",
+                    CONF_API_SECRET: "test_api_secret",
+                },
+            )
+
+    @pytest.mark.asyncio
+    async def test_stale_subscription_forgotten_even_without_a_public_url(
+        self, mock_hass, entry_with_stale_webhook_state, coordinator
+    ):
+        """Test stale state is cleaned up even if setup can't create a new webhook.
+
+        Regression coverage: async_setup_webhook used to check get_url()
+        before calling _async_forget_previous_subscription and return
+        early on NoURLAvailableError. If a public URL was available on a
+        prior setup but stops being available later (proxy reconfigured,
+        Cloud disconnected, etc.), that early return meant the old
+        subscription - and its WEBHOOK_STATE_KEY entry - was never cleaned
+        up, since the only code path that would do it required the URL
+        that's now missing.
+        """
+        from homeassistant.helpers.network import NoURLAvailableError
+
+        mock_hass.data[DOMAIN] = {entry_with_stale_webhook_state.entry_id: {}}
+
+        with patch(
+            "custom_components.early.webhook.get_url",
+            side_effect=NoURLAvailableError,
+        ):
+            await async_setup_webhook(
+                mock_hass, entry_with_stale_webhook_state, coordinator
+            )
+
+            coordinator.async_unsubscribe_webhook.assert_any_call("stale_sub_started")
+            coordinator.async_unsubscribe_webhook.assert_any_call("stale_sub_stopped")
             mock_hass.config_entries.async_update_entry.assert_any_call(
                 entry_with_stale_webhook_state,
                 data={

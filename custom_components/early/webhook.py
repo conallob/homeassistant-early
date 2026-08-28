@@ -34,12 +34,14 @@ every time that happens.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from aiohttp import web
 from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.network import NoURLAvailableError, get_url
+from homeassistant.util.dt import utcnow
 
 from .const import (
     DOMAIN,
@@ -56,6 +58,14 @@ WEBHOOK_EVENTS = (WEBHOOK_EVENT_TRACKING_STARTED, WEBHOOK_EVENT_TRACKING_STOPPED
 # purely so a subsequent setup (e.g. after a non-graceful restart) can find
 # and clean up a subscription async_unload_webhook never got the chance to.
 WEBHOOK_STATE_KEY = "_early_webhook_state"
+
+# The webhook_id's obscurity is the only access control on the endpoint -
+# there's no EARLY signature/secret to verify. Since every hit bypasses
+# the coordinator's normal @Throttle via no_throttle=True, anyone who
+# obtains the URL could otherwise force unlimited live calls to EARLY's
+# API. This bounds that to one unthrottled refresh per interval; faster
+# hits fall back to a normal (still-throttled) async_update() call.
+WEBHOOK_MIN_REFRESH_INTERVAL = timedelta(seconds=2)
 
 
 async def _async_forget_previous_subscription(
@@ -79,6 +89,15 @@ async def async_setup_webhook(
     hass: HomeAssistant, entry: ConfigEntry, coordinator: EarlyAPICoordinator
 ) -> None:
     """Register a webhook endpoint and subscribe it to EARLY tracking events."""
+    # Clean up a subscription from a previous run first, regardless of
+    # whether a new one can be created below - otherwise a public URL that
+    # was available at a prior setup but isn't anymore (proxy
+    # reconfigured, Cloud disconnected, etc.) would leave that old
+    # subscription (and its WEBHOOK_STATE_KEY entry) orphaned forever,
+    # since the code path that would clean it up would itself require the
+    # URL that's now missing.
+    await _async_forget_previous_subscription(hass, entry, coordinator)
+
     try:
         # Only used to confirm Home Assistant has a public URL at all; the
         # actual callback URL below is built from the webhook_id via
@@ -93,13 +112,10 @@ async def async_setup_webhook(
         )
         return
 
-    # Clean up a subscription from a previous run before creating a new
-    # one, so a non-graceful restart (or a setup retry) doesn't accumulate
-    # orphaned subscriptions in the user's EARLY account.
-    await _async_forget_previous_subscription(hass, entry, coordinator)
-
     webhook_id = webhook.async_generate_id()
     webhook_url = webhook.async_generate_url(hass, webhook_id)
+
+    last_refresh_at = {"time": None}
 
     async def _handle_webhook(
         hass: HomeAssistant, received_webhook_id: str, request: web.Request
@@ -109,19 +125,36 @@ async def async_setup_webhook(
         The payload isn't parsed for tracking state - EARLY's tracking
         endpoint (already polled by the coordinator) is the single source
         of truth the rest of this integration trusts, so a webhook call of
-        either event just triggers an immediate, unthrottled refresh from
-        that endpoint instead of duplicating state-parsing logic here. Both
-        the body parse and the refresh are guarded so nothing here can ever
-        raise out of the aiohttp view.
+        either event just triggers an immediate refresh from that endpoint
+        instead of duplicating state-parsing logic here. Both the body
+        parse and the refresh are guarded so nothing here can ever raise
+        out of the aiohttp view.
+
+        The webhook_id's obscurity is the only access control on this
+        endpoint, so an unthrottled (no_throttle=True) refresh is only
+        allowed once per WEBHOOK_MIN_REFRESH_INTERVAL - anyone who obtains
+        the URL can still hit it as fast as they like, but each hit within
+        the interval just falls through to a normal, still-throttled
+        async_update() call instead of forcing another live EARLY API call.
         """
         try:
             await request.json()
         except ValueError:
             _LOGGER.debug("Received EARLY webhook call with a non-JSON body")
 
+        now = utcnow()
+        allow_immediate = (
+            last_refresh_at["time"] is None
+            or now - last_refresh_at["time"] >= WEBHOOK_MIN_REFRESH_INTERVAL
+        )
+
         _LOGGER.debug("Received EARLY webhook call; refreshing tracking status")
         try:
-            await coordinator.async_update(no_throttle=True)
+            if allow_immediate:
+                last_refresh_at["time"] = now
+                await coordinator.async_update(no_throttle=True)
+            else:
+                await coordinator.async_update()
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("Error refreshing EARLY tracking data from webhook")
 
