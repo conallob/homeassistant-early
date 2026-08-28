@@ -82,6 +82,42 @@ class TestAsyncSetupWebhook:
             assert len(entry_data["webhook_subscription_ids"]) == len(WEBHOOK_EVENTS)
 
     @pytest.mark.asyncio
+    async def test_falsy_but_non_none_subscription_id_is_kept(
+        self, mock_hass, mock_config_entry, coordinator
+    ):
+        """Test an empty-string (falsy but real) subscription id isn't dropped.
+
+        Regression coverage: the subscription_ids dict comprehension used
+        `if subscription_id` to filter out failed subscriptions (None), but
+        that would also silently drop any subscription EARLY returns with
+        a falsy-but-real id (e.g. an empty string) - the event would look
+        unsubscribed and never make it into WEBHOOK_STATE_KEY, so a later
+        restart could never find or clean it up. `is not None` is what
+        this is actually meant to check for.
+        """
+        coordinator.async_subscribe_webhook = AsyncMock(
+            side_effect=lambda event, url: (
+                "" if event == "trackingStarted" else "sub_stopped"
+            )
+        )
+        mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+
+        with patch(
+            "custom_components.early.webhook.get_url",
+            return_value="https://ha.example.com",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_generate_id",
+            return_value="test_webhook_id",
+        ), patch(
+            "custom_components.early.webhook.webhook.async_register"
+        ):
+            await async_setup_webhook(mock_hass, mock_config_entry, coordinator)
+
+            entry_data = mock_hass.data[DOMAIN][mock_config_entry.entry_id]
+            assert entry_data["webhook_subscription_ids"]["trackingStarted"] == ""
+            assert len(entry_data["webhook_subscription_ids"]) == len(WEBHOOK_EVENTS)
+
+    @pytest.mark.asyncio
     async def test_subscribed_url_is_built_from_the_reachability_check(
         self, mock_hass, mock_config_entry, coordinator
     ):

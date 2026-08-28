@@ -700,6 +700,54 @@ class TestEarlyAPICoordinatorListeners:
         callback.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_listeners_are_notified_after_the_lock_is_released(
+        self,
+        mock_hass,
+        mock_api_token_response,
+        mock_activities_response,
+        mock_tracking_response_active,
+    ):
+        """Test a listener callback doesn't run while _update_lock is held.
+
+        Regression coverage: _notify_listeners() previously ran inside the
+        same `async with self._update_lock:` block as the fetch, so every
+        entity's async_write_ha_state() ran while holding the lock meant
+        to protect only the token/tracking-data writes - needlessly
+        widening the critical section and blocking a webhook-triggered
+        refresh behind whatever the slowest listener does.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        lock_state_when_notified = {}
+
+        def listener():
+            lock_state_when_notified["locked"] = coordinator._update_lock.locked()
+
+        coordinator.add_listener(listener)
+
+        token_response = MagicMock()
+        token_response.json.return_value = mock_api_token_response
+        token_response.raise_for_status = MagicMock()
+
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response
+        activities_response.raise_for_status = MagicMock()
+
+        tracking_response = MagicMock()
+        tracking_response.status_code = 200
+        tracking_response.json.return_value = mock_tracking_response_active
+        tracking_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            token_response,
+            activities_response,
+            tracking_response,
+        ]
+
+        await coordinator.async_update()
+
+        assert lock_state_when_notified["locked"] is False
+
+    @pytest.mark.asyncio
     async def test_async_subscribe_webhook_success(self, mock_hass):
         """Test subscribing to a webhook event returns the subscription id."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")

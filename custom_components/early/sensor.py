@@ -238,9 +238,15 @@ class EarlyAPICoordinator:
     async def async_update(self) -> None:
         """Fetch data from EARLY API.
 
-        The body runs under self._update_lock so a webhook-triggered
+        The fetch runs under self._update_lock so a webhook-triggered
         refresh (no_throttle=True) can't interleave its writes with a
-        concurrently in-flight, poll-triggered call.
+        concurrently in-flight, poll-triggered call. Listeners are
+        notified after releasing the lock - they only read the result,
+        so they don't need its protection, and holding the lock through
+        every entity's async_write_ha_state() would widen the critical
+        section well beyond the writes it exists to protect, needlessly
+        blocking a webhook-triggered refresh behind a poll-triggered one
+        (or vice versa) for longer than necessary.
         """
         async with self._update_lock:
             try:
@@ -263,7 +269,7 @@ class EarlyAPICoordinator:
                 _LOGGER.error("Error fetching EARLY tracking data: %s", err)
                 self._tracking_data = None
 
-            self._notify_listeners()
+        self._notify_listeners()
 
     @property
     def tracking_data(self) -> dict[str, Any] | None:

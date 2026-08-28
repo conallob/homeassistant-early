@@ -218,7 +218,7 @@ async def async_setup_webhook(
     subscription_ids = {
         event: subscription_id
         for event, subscription_id in zip(WEBHOOK_EVENTS, results)
-        if subscription_id
+        if subscription_id is not None
     }
 
     if not subscription_ids:
