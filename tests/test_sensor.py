@@ -1,9 +1,11 @@
 """Test the EARLY sensor platform."""
 
+import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.util.dt import utcnow
 
 from custom_components.early.const import DOMAIN
 from custom_components.early.sensor import (
@@ -576,6 +578,63 @@ class TestEarlyAPICoordinatorListeners:
         remove()
         coordinator._notify_listeners()
         callback.assert_called_once()  # not called again after removal
+
+    def test_notify_listeners_isolates_a_failing_listener(self, mock_hass):
+        """Test one listener raising doesn't stop the others from running.
+
+        Regression coverage: _notify_listeners previously called each
+        listener unguarded, so a broken entity's async_write_ha_state could
+        both skip every listener registered after it and propagate out of
+        async_update() (and, transitively, out of the webhook handler).
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        failing_callback = MagicMock(side_effect=RuntimeError("boom"))
+        healthy_callback = MagicMock()
+        coordinator.add_listener(failing_callback)
+        coordinator.add_listener(healthy_callback)
+
+        coordinator._notify_listeners()
+
+        failing_callback.assert_called_once()
+        healthy_callback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_update_holds_lock_for_its_duration(self, mock_hass):
+        """Test the coordinator's update lock is held while a refresh is in flight.
+
+        Regression coverage: a webhook-triggered refresh (no_throttle=True)
+        can run concurrently with an in-flight, poll-triggered call.
+        self._update_lock should serialize their bodies so one call's
+        writes to self._token/_tracking_data can't be clobbered mid-flight
+        by the other - this checks the lock is actually held for as long
+        as a refresh is running, not just acquired and released instantly.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"activity_1": "Working"}
+        coordinator._activities_last_fetch = utcnow()
+
+        started = asyncio.Event()
+
+        async def fake_request_with_retry(method, url, **kwargs):
+            started.set()
+            await asyncio.sleep(0.01)
+            response = MagicMock()
+            response.json.return_value = {"currentTracking": None}
+            return response
+
+        coordinator._request_with_retry = fake_request_with_retry
+
+        async def probe_lock_while_update_runs():
+            await started.wait()
+            return coordinator._update_lock.locked()
+
+        _, lock_was_held = await asyncio.gather(
+            coordinator.async_update(no_throttle=True),
+            probe_lock_while_update_runs(),
+        )
+
+        assert lock_was_held is True
+        assert not coordinator._update_lock.locked()
 
     @pytest.mark.asyncio
     async def test_async_update_notifies_listeners(

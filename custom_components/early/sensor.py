@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Callable
@@ -90,6 +91,12 @@ class EarlyAPICoordinator:
         self._device_side_mapping: dict[int, str] = {}
         self._activities_last_fetch: datetime | None = None
         self._listeners: list[Callable[[], None]] = []
+        # Serializes async_update()'s body so a webhook-triggered refresh
+        # (no_throttle=True, see webhook.py) can't interleave its
+        # token/tracking-data writes with a concurrently in-flight,
+        # poll-triggered call - @Throttle below only guards how often a
+        # call *starts*, not whether two calls can run at once.
+        self._update_lock = asyncio.Lock()
 
     def add_listener(self, update_callback: Callable[[], None]) -> Callable[[], None]:
         """Register a callback to be invoked whenever tracking data refreshes.
@@ -107,9 +114,17 @@ class EarlyAPICoordinator:
         return remove_listener
 
     def _notify_listeners(self) -> None:
-        """Call every registered listener after a data refresh."""
+        """Call every registered listener after a data refresh.
+
+        Each callback is isolated so one misbehaving entity can't stop the
+        others from being notified, or propagate out of async_update() and
+        break the coordinator refresh (poll- or webhook-triggered) itself.
+        """
         for update_callback in self._listeners:
-            update_callback()
+            try:
+                update_callback()
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Error notifying EARLY coordinator listener")
 
     async def _get_token(self) -> str:
         """Get authentication token from EARLY API."""
@@ -217,27 +232,34 @@ class EarlyAPICoordinator:
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def async_update(self) -> None:
-        """Fetch data from EARLY API."""
-        try:
-            # Refresh activities at startup and at most once per hour
-            activities_stale = (
-                not self._activities
-                or self._activities_last_fetch is None
-                or utcnow() - self._activities_last_fetch > ACTIVITIES_REFRESH_INTERVAL
-            )
-            if activities_stale:
-                await self._fetch_activities()
+        """Fetch data from EARLY API.
 
-            # Fetch current tracking status
-            response = await self._request_with_retry("get", API_TRACKING_ENDPOINT)
-            self._tracking_data = response.json()
-            _LOGGER.debug("Updated EARLY tracking data: %s", self._tracking_data)
+        The body runs under self._update_lock so a webhook-triggered
+        refresh (no_throttle=True) can't interleave its writes with a
+        concurrently in-flight, poll-triggered call.
+        """
+        async with self._update_lock:
+            try:
+                # Refresh activities at startup and at most once per hour
+                activities_stale = (
+                    not self._activities
+                    or self._activities_last_fetch is None
+                    or utcnow() - self._activities_last_fetch
+                    > ACTIVITIES_REFRESH_INTERVAL
+                )
+                if activities_stale:
+                    await self._fetch_activities()
 
-        except requests.exceptions.RequestException as err:
-            _LOGGER.error("Error fetching EARLY tracking data: %s", err)
-            self._tracking_data = None
+                # Fetch current tracking status
+                response = await self._request_with_retry("get", API_TRACKING_ENDPOINT)
+                self._tracking_data = response.json()
+                _LOGGER.debug("Updated EARLY tracking data: %s", self._tracking_data)
 
-        self._notify_listeners()
+            except requests.exceptions.RequestException as err:
+                _LOGGER.error("Error fetching EARLY tracking data: %s", err)
+                self._tracking_data = None
+
+            self._notify_listeners()
 
     @property
     def tracking_data(self) -> dict[str, Any] | None:

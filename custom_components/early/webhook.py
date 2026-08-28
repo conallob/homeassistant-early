@@ -22,12 +22,18 @@ optimization layered on top of polling, never a replacement:
   incoming webhook call, is caught and logged rather than raised, so it
   can never break entry setup/unload or crash the poll-based coordinator
   this integration has always relied on.
+
+The webhook_id/subscription ids are also mirrored into config_entry.data
+(under WEBHOOK_STATE_KEY) so a non-graceful restart (crash, container
+restart, systemctl restart - anything that skips async_unload_entry) can
+still be recognized and cleaned up on the next setup, instead of silently
+leaking an orphaned subscription (and local webhook_id) in EARLY's account
+every time that happens.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from aiohttp import web
 from homeassistant.components import webhook
@@ -40,14 +46,37 @@ from .const import (
     WEBHOOK_EVENT_TRACKING_STARTED,
     WEBHOOK_EVENT_TRACKING_STOPPED,
 )
+from .sensor import EarlyAPICoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 WEBHOOK_EVENTS = (WEBHOOK_EVENT_TRACKING_STARTED, WEBHOOK_EVENT_TRACKING_STOPPED)
 
+# Config-entry data key this module uses to remember a webhook it created,
+# purely so a subsequent setup (e.g. after a non-graceful restart) can find
+# and clean up a subscription async_unload_webhook never got the chance to.
+WEBHOOK_STATE_KEY = "_early_webhook_state"
+
+
+async def _async_forget_previous_subscription(
+    hass: HomeAssistant, entry: ConfigEntry, coordinator: EarlyAPICoordinator
+) -> None:
+    """Unsubscribe and clear any webhook state left over from a prior run."""
+    previous_state = entry.data.get(WEBHOOK_STATE_KEY)
+    if not previous_state:
+        return
+
+    for subscription_id in previous_state.get("subscription_ids", {}).values():
+        await coordinator.async_unsubscribe_webhook(subscription_id)
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data={k: v for k, v in entry.data.items() if k != WEBHOOK_STATE_KEY},
+    )
+
 
 async def async_setup_webhook(
-    hass: HomeAssistant, entry: ConfigEntry, coordinator: Any
+    hass: HomeAssistant, entry: ConfigEntry, coordinator: EarlyAPICoordinator
 ) -> None:
     """Register a webhook endpoint and subscribe it to EARLY tracking events."""
     try:
@@ -64,6 +93,11 @@ async def async_setup_webhook(
         )
         return
 
+    # Clean up a subscription from a previous run before creating a new
+    # one, so a non-graceful restart (or a setup retry) doesn't accumulate
+    # orphaned subscriptions in the user's EARLY account.
+    await _async_forget_previous_subscription(hass, entry, coordinator)
+
     webhook_id = webhook.async_generate_id()
     webhook_url = webhook.async_generate_url(hass, webhook_id)
 
@@ -76,7 +110,9 @@ async def async_setup_webhook(
         endpoint (already polled by the coordinator) is the single source
         of truth the rest of this integration trusts, so a webhook call of
         either event just triggers an immediate, unthrottled refresh from
-        that endpoint instead of duplicating state-parsing logic here.
+        that endpoint instead of duplicating state-parsing logic here. Both
+        the body parse and the refresh are guarded so nothing here can ever
+        raise out of the aiohttp view.
         """
         try:
             await request.json()
@@ -84,7 +120,11 @@ async def async_setup_webhook(
             _LOGGER.debug("Received EARLY webhook call with a non-JSON body")
 
         _LOGGER.debug("Received EARLY webhook call; refreshing tracking status")
-        await coordinator.async_update(no_throttle=True)
+        try:
+            await coordinator.async_update(no_throttle=True)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Error refreshing EARLY tracking data from webhook")
+
         return web.Response(status=200)
 
     webhook.async_register(
@@ -115,6 +155,16 @@ async def async_setup_webhook(
         return
 
     entry_data["webhook_subscription_ids"] = subscription_ids
+    hass.config_entries.async_update_entry(
+        entry,
+        data={
+            **entry.data,
+            WEBHOOK_STATE_KEY: {
+                "webhook_id": webhook_id,
+                "subscription_ids": subscription_ids,
+            },
+        },
+    )
     _LOGGER.debug(
         "EARLY webhook registered for entry %s (%d/%d events subscribed)",
         entry.entry_id,
@@ -124,7 +174,7 @@ async def async_setup_webhook(
 
 
 async def async_unload_webhook(
-    hass: HomeAssistant, entry: ConfigEntry, coordinator: Any
+    hass: HomeAssistant, entry: ConfigEntry, coordinator: EarlyAPICoordinator
 ) -> None:
     """Unregister the local webhook endpoint and unsubscribe from EARLY."""
     entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
@@ -136,3 +186,9 @@ async def async_unload_webhook(
 
     if webhook_id:
         webhook.async_unregister(hass, webhook_id)
+
+    if WEBHOOK_STATE_KEY in entry.data:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={k: v for k, v in entry.data.items() if k != WEBHOOK_STATE_KEY},
+        )
