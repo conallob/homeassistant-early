@@ -283,6 +283,12 @@ No setup is required beyond having a public URL configured in Home
 Assistant - the integration handles subscribing/unsubscribing itself and
 falls back silently if that's not possible.
 
+The webhook-triggered refresh shares the same update path as the regular
+poll, so if a poll is already in progress when a webhook call arrives, the
+refresh it triggers waits for that poll to finish rather than jumping
+ahead of it - this keeps the update logic race-free at a small latency
+cost if the EARLY API happens to be slow to respond at that moment.
+
 ### Bluetooth Tracker
 
 The integration communicates with EARLY ZEI trackers using Bluetooth Low Energy (BLE):
