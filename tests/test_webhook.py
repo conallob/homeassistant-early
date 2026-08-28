@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.components import webhook as ha_webhook
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY
 from homeassistant.util.dt import utcnow
@@ -625,3 +626,39 @@ class TestWebhookSurvivesRestart:
                     CONF_API_SECRET: "test_api_secret",
                 },
             )
+
+
+class TestWebhookRegisterSignatureCompatibility:
+    """Guard against homeassistant.components.webhook API drift.
+
+    Every test above patches out webhook.async_register/async_unregister,
+    which is correct for isolating this module's own logic - but it also
+    means none of them would notice if a future (or differently-pinned)
+    homeassistant version dropped or renamed a kwarg this module relies
+    on, e.g. `allowed_methods`. This test calls the *real* function
+    (unmocked) with exactly the arguments async_setup_webhook passes, so a
+    signature mismatch fails loudly here instead of only at runtime
+    against a real public URL.
+    """
+
+    def test_async_register_accepts_the_kwargs_this_module_passes(self):
+        """Test the real webhook.async_register accepts allowed_methods."""
+        hass = MagicMock()
+        hass.data = {}
+
+        async def handler(hass, webhook_id, request):
+            return None
+
+        ha_webhook.async_register(
+            hass,
+            DOMAIN,
+            "EARLY tracking",
+            "test_webhook_id",
+            handler,
+            allowed_methods=["POST"],
+        )
+
+        assert "test_webhook_id" in hass.data[ha_webhook.DOMAIN]
+        assert hass.data[ha_webhook.DOMAIN]["test_webhook_id"][
+            "allowed_methods"
+        ] == frozenset(["POST"])
