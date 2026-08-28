@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from .bluetooth import EarlyBluetoothDevice
 from .const import BLE_SERVICE_UUID, DEVICE_NAME_PREFIX, DOMAIN
 from .util import is_bluetooth_entry
+from .webhook import async_setup_webhook, async_unload_webhook
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +35,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # bluetooth_sensor.py creates, so SENSOR must fully finish first.
     await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
     await hass.config_entries.async_forward_entry_setups(entry, [Platform.SWITCH])
+
+    # If SENSOR set up an API coordinator, try to subscribe it to EARLY's
+    # webhooks so tracking start/stop is reflected immediately rather than
+    # waiting up to DEFAULT_SCAN_INTERVAL seconds for the next poll. This is
+    # best-effort: it requires a publicly reachable HA URL, and quietly
+    # leaves the entry on polling-only if that (or the API subscription
+    # call) isn't available - see webhook.py.
+    coordinator = hass.data[DOMAIN][entry.entry_id].get("coordinator")
+    if coordinator is not None:
+        try:
+            await async_setup_webhook(hass, entry, coordinator)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception(
+                "Unexpected error setting up EARLY webhook for entry %s; "
+                "continuing with polling only",
+                entry.entry_id,
+            )
 
     # Register for bluetooth discovery if this is a bluetooth setup
     if is_bluetooth_entry(entry):
@@ -65,14 +83,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    # Disconnect from any bluetooth devices
     if entry.entry_id in hass.data.get(DOMAIN, {}):
-        bluetooth_devices = hass.data[DOMAIN][entry.entry_id].get(
-            "bluetooth_devices", {}
-        )
+        entry_data = hass.data[DOMAIN][entry.entry_id]
+
+        # Disconnect from any bluetooth devices
+        bluetooth_devices = entry_data.get("bluetooth_devices", {})
         for device in bluetooth_devices.values():
             if isinstance(device, EarlyBluetoothDevice):
                 await device.disconnect()
+
+        # Tear down any EARLY webhook subscription set up for this entry
+        coordinator = entry_data.get("coordinator")
+        if coordinator is not None:
+            try:
+                await async_unload_webhook(hass, entry, coordinator)
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception(
+                    "Unexpected error tearing down EARLY webhook for entry %s",
+                    entry.entry_id,
+                )
 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id, None)

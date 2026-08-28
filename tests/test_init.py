@@ -64,6 +64,70 @@ class TestIntegrationSetup:
             mock_register.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_async_setup_entry_sets_up_webhook_when_coordinator_present(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test webhook setup is attempted when SENSOR created a coordinator."""
+
+        async def _fake_forward(entry, platforms):
+            if platforms == [Platform.SENSOR]:
+                mock_hass.data[DOMAIN][entry.entry_id]["coordinator"] = MagicMock()
+            return True
+
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
+            side_effect=_fake_forward
+        )
+
+        with patch(
+            "custom_components.early.async_setup_webhook", new_callable=AsyncMock
+        ) as mock_setup_webhook:
+            result = await async_setup_entry(mock_hass, mock_config_entry)
+
+            assert result is True
+            mock_setup_webhook.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_setup_entry_skips_webhook_without_coordinator(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test webhook setup is skipped when no coordinator was created."""
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
+            return_value=True
+        )
+
+        with patch(
+            "custom_components.early.async_setup_webhook", new_callable=AsyncMock
+        ) as mock_setup_webhook:
+            result = await async_setup_entry(mock_hass, mock_config_entry)
+
+            assert result is True
+            mock_setup_webhook.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_setup_entry_webhook_error_does_not_fail_setup(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test an unexpected webhook setup error doesn't fail entry setup."""
+
+        async def _fake_forward(entry, platforms):
+            if platforms == [Platform.SENSOR]:
+                mock_hass.data[DOMAIN][entry.entry_id]["coordinator"] = MagicMock()
+            return True
+
+        mock_hass.config_entries.async_forward_entry_setups = AsyncMock(
+            side_effect=_fake_forward
+        )
+
+        with patch(
+            "custom_components.early.async_setup_webhook",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            result = await async_setup_entry(mock_hass, mock_config_entry)
+
+            assert result is True
+
+    @pytest.mark.asyncio
     async def test_async_setup_entry_existing_domain(
         self, mock_hass, mock_config_entry
     ):
@@ -99,6 +163,56 @@ class TestIntegrationSetup:
         mock_hass.config_entries.async_unload_platforms.assert_called_once_with(
             mock_config_entry, [Platform.SENSOR, Platform.SWITCH]
         )
+
+    @pytest.mark.asyncio
+    async def test_async_unload_entry_tears_down_webhook_when_coordinator_present(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test webhook teardown is attempted when a coordinator was stored."""
+        mock_coordinator = MagicMock()
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {
+                "config": mock_config_entry.data,
+                "bluetooth_devices": {},
+                "coordinator": mock_coordinator,
+            }
+        }
+
+        mock_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+        with patch(
+            "custom_components.early.async_unload_webhook", new_callable=AsyncMock
+        ) as mock_unload_webhook:
+            result = await async_unload_entry(mock_hass, mock_config_entry)
+
+            assert result is True
+            mock_unload_webhook.assert_called_once_with(
+                mock_hass, mock_config_entry, mock_coordinator
+            )
+
+    @pytest.mark.asyncio
+    async def test_async_unload_entry_webhook_error_does_not_fail_unload(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test an unexpected webhook teardown error doesn't fail entry unload."""
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {
+                "config": mock_config_entry.data,
+                "bluetooth_devices": {},
+                "coordinator": MagicMock(),
+            }
+        }
+
+        mock_hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+
+        with patch(
+            "custom_components.early.async_unload_webhook",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ):
+            result = await async_unload_entry(mock_hass, mock_config_entry)
+
+            assert result is True
 
     @pytest.mark.asyncio
     async def test_async_unload_entry_bluetooth(

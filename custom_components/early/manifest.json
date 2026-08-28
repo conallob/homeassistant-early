@@ -8,10 +8,10 @@
   ],
   "codeowners": ["@conallob"],
   "config_flow": true,
-  "dependencies": ["bluetooth"],
+  "dependencies": ["bluetooth", "webhook"],
   "documentation": "https://www.github.com/conallob/homeassistant-early",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/conallob/homeassistant-early/issues",
   "requirements": ["requests>=2.31.0"],
-  "version": "1.3.0"
+  "version": "1.4.0"
 }

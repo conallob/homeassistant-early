@@ -32,6 +32,27 @@ class TestEarlyActivitySwitch:
 
         assert switch.unique_id == f"{DOMAIN}_bt_entry_id_activity_activity_1"
 
+    @pytest.mark.asyncio
+    async def test_switch_registers_and_unregisters_listener(self, mock_hass):
+        """Test the switch registers for webhook-triggered refreshes and cleans up.
+
+        This is what makes a webhook-triggered coordinator refresh show up
+        immediately (via async_write_ha_state) instead of waiting for this
+        entity's own next poll cycle.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        switch = EarlyActivitySwitch(coordinator, "activity_1", "Working")
+        switch.async_write_ha_state = MagicMock()
+
+        await switch.async_added_to_hass()
+        assert len(coordinator._listeners) == 1
+
+        coordinator._notify_listeners()
+        switch.async_write_ha_state.assert_called_once()
+
+        await switch.async_will_remove_from_hass()
+        assert len(coordinator._listeners) == 0
+
     def test_switch_is_on_true(self, mock_hass):
         """Test switch is_on when activity is being tracked."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")

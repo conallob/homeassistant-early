@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 import requests
 from homeassistant.components.sensor import SensorEntity
@@ -19,6 +19,7 @@ from .const import (
     API_ACTIVITIES_ENDPOINT,
     API_SIGN_IN_ENDPOINT,
     API_TRACKING_ENDPOINT,
+    API_WEBHOOK_SUBSCRIPTION_ENDPOINT,
     ATTR_ACTIVITY_ID,
     ATTR_ACTIVITY_NAME,
     ATTR_NOTE,
@@ -88,6 +89,27 @@ class EarlyAPICoordinator:
         self._activities: dict[str, str] = {}
         self._device_side_mapping: dict[int, str] = {}
         self._activities_last_fetch: datetime | None = None
+        self._listeners: list[Callable[[], None]] = []
+
+    def add_listener(self, update_callback: Callable[[], None]) -> Callable[[], None]:
+        """Register a callback to be invoked whenever tracking data refreshes.
+
+        Used by entities so a webhook-triggered refresh (see webhook.py) is
+        reflected immediately via async_write_ha_state, instead of sitting
+        in the coordinator until the entity's own poll cycle catches up.
+        Returns a function that removes the listener again.
+        """
+        self._listeners.append(update_callback)
+
+        def remove_listener() -> None:
+            self._listeners.remove(update_callback)
+
+        return remove_listener
+
+    def _notify_listeners(self) -> None:
+        """Call every registered listener after a data refresh."""
+        for update_callback in self._listeners:
+            update_callback()
 
     async def _get_token(self) -> str:
         """Get authentication token from EARLY API."""
@@ -215,6 +237,8 @@ class EarlyAPICoordinator:
             _LOGGER.error("Error fetching EARLY tracking data: %s", err)
             self._tracking_data = None
 
+        self._notify_listeners()
+
     @property
     def tracking_data(self) -> dict[str, Any] | None:
         """Return the current tracking data."""
@@ -262,6 +286,47 @@ class EarlyAPICoordinator:
             _LOGGER.error("Error stopping tracking: %s", err)
             raise
 
+    async def async_subscribe_webhook(self, event: str, target_url: str) -> str | None:
+        """Subscribe target_url to an EARLY webhook event.
+
+        Returns the subscription id EARLY assigns, or None if the
+        subscription request failed - callers should treat that as "no
+        webhook available" and keep relying on polling rather than erroring
+        out, since webhook support depends on Home Assistant having a
+        publicly reachable URL.
+        """
+        try:
+            response = await self._request_with_retry(
+                "post",
+                API_WEBHOOK_SUBSCRIPTION_ENDPOINT,
+                json={"event": event, "targetUrl": target_url},
+            )
+            subscription_id = response.json().get("id")
+            _LOGGER.debug(
+                "Subscribed to EARLY webhook event %s (subscription %s)",
+                event,
+                subscription_id,
+            )
+            return subscription_id
+        except requests.exceptions.RequestException as err:
+            _LOGGER.warning(
+                "Could not subscribe to EARLY webhook event %s: %s", event, err
+            )
+            return None
+
+    async def async_unsubscribe_webhook(self, subscription_id: str) -> None:
+        """Remove a previously created EARLY webhook subscription."""
+        try:
+            await self._request_with_retry(
+                "delete",
+                f"{API_WEBHOOK_SUBSCRIPTION_ENDPOINT}/{subscription_id}",
+            )
+            _LOGGER.debug("Unsubscribed EARLY webhook %s", subscription_id)
+        except requests.exceptions.RequestException as err:
+            _LOGGER.debug(
+                "Error unsubscribing EARLY webhook %s: %s", subscription_id, err
+            )
+
 
 class EarlyCurrentTrackingSensor(SensorEntity):
     """Representation of an EARLY current tracking sensor."""
@@ -272,6 +337,24 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         self._attr_name = "EARLY Current Activity"
         self._attr_unique_id = f"{DOMAIN}_current_tracking"
         self._attr_icon = "mdi:clock-outline"
+        self._remove_listener: Callable[[], None] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register for immediate updates when the coordinator refreshes.
+
+        This is what makes a webhook-triggered refresh (see webhook.py)
+        show up right away instead of waiting for this entity's own next
+        poll cycle.
+        """
+        self._remove_listener = self._coordinator.add_listener(
+            self.async_write_ha_state
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister from the coordinator."""
+        if self._remove_listener is not None:
+            self._remove_listener()
+            self._remove_listener = None
 
     @property
     def _current_activity_name(self) -> str | None:

@@ -561,6 +561,124 @@ class TestEarlyAPICoordinator:
         assert 3 not in coordinator._device_side_mapping  # Break not assigned
 
 
+class TestEarlyAPICoordinatorListeners:
+    """Test the coordinator's webhook-refresh listener pub/sub."""
+
+    def test_add_listener_returns_remover(self, mock_hass):
+        """Test add_listener registers the callback and returns a remover."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        callback = MagicMock()
+
+        remove = coordinator.add_listener(callback)
+        coordinator._notify_listeners()
+        callback.assert_called_once()
+
+        remove()
+        coordinator._notify_listeners()
+        callback.assert_called_once()  # not called again after removal
+
+    @pytest.mark.asyncio
+    async def test_async_update_notifies_listeners(
+        self,
+        mock_hass,
+        mock_api_token_response,
+        mock_activities_response,
+        mock_tracking_response_active,
+    ):
+        """Test a successful async_update notifies registered listeners."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        callback = MagicMock()
+        coordinator.add_listener(callback)
+
+        token_response = MagicMock()
+        token_response.json.return_value = mock_api_token_response
+        token_response.raise_for_status = MagicMock()
+
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response
+        activities_response.raise_for_status = MagicMock()
+
+        tracking_response = MagicMock()
+        tracking_response.status_code = 200
+        tracking_response.json.return_value = mock_tracking_response_active
+        tracking_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            token_response,
+            activities_response,
+            tracking_response,
+        ]
+
+        await coordinator.async_update()
+
+        callback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_subscribe_webhook_success(self, mock_hass):
+        """Test subscribing to a webhook event returns the subscription id."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._token = "cached_token"
+
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {"id": "sub_123"}
+        response.raise_for_status = MagicMock()
+        mock_hass.async_add_executor_job.side_effect = [response]
+
+        subscription_id = await coordinator.async_subscribe_webhook(
+            "trackingStarted", "https://ha.example.com/api/webhook/abc"
+        )
+
+        assert subscription_id == "sub_123"
+
+    @pytest.mark.asyncio
+    async def test_async_subscribe_webhook_failure_returns_none(self, mock_hass):
+        """Test a failed subscription request returns None instead of raising."""
+        import requests as req_module
+
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._token = "cached_token"
+
+        mock_hass.async_add_executor_job.side_effect = (
+            req_module.exceptions.ConnectionError("Network error")
+        )
+
+        subscription_id = await coordinator.async_subscribe_webhook(
+            "trackingStarted", "https://ha.example.com/api/webhook/abc"
+        )
+
+        assert subscription_id is None
+
+    @pytest.mark.asyncio
+    async def test_async_unsubscribe_webhook_success(self, mock_hass):
+        """Test unsubscribing a webhook subscription."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._token = "cached_token"
+
+        response = MagicMock()
+        response.status_code = 200
+        response.raise_for_status = MagicMock()
+        mock_hass.async_add_executor_job.side_effect = [response]
+
+        await coordinator.async_unsubscribe_webhook("sub_123")
+
+        mock_hass.async_add_executor_job.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_unsubscribe_webhook_failure_does_not_raise(self, mock_hass):
+        """Test a failed unsubscribe request is swallowed, not raised."""
+        import requests as req_module
+
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._token = "cached_token"
+
+        mock_hass.async_add_executor_job.side_effect = (
+            req_module.exceptions.ConnectionError("Network error")
+        )
+
+        await coordinator.async_unsubscribe_webhook("sub_123")
+
+
 class TestEarlyCurrentTrackingSensor:
     """Test the EarlyCurrentTrackingSensor class."""
 
@@ -742,6 +860,27 @@ class TestEarlyCurrentTrackingSensor:
         await sensor.async_update()
 
         coordinator.async_update.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sensor_registers_and_unregisters_listener(self, mock_hass):
+        """Test the sensor registers for webhook-triggered refreshes and cleans up.
+
+        This is what makes a webhook-triggered coordinator refresh show up
+        immediately (via async_write_ha_state) instead of waiting for this
+        entity's own next poll cycle.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        sensor = EarlyCurrentTrackingSensor(coordinator)
+        sensor.async_write_ha_state = MagicMock()
+
+        await sensor.async_added_to_hass()
+        assert len(coordinator._listeners) == 1
+
+        coordinator._notify_listeners()
+        sensor.async_write_ha_state.assert_called_once()
+
+        await sensor.async_will_remove_from_hass()
+        assert len(coordinator._listeners) == 0
 
 
 class TestSensorPlatformSetup:
