@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -93,6 +93,24 @@ class EarlyActivitySwitch(SwitchEntity):
             else f"{DOMAIN}_activity_{activity_id}"
         )
         self._attr_icon = "mdi:timer"
+        self._remove_listener: Callable[[], None] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register for immediate updates when the coordinator refreshes.
+
+        This is what makes a webhook-triggered refresh (see webhook.py)
+        show up right away instead of waiting for this entity's own next
+        poll cycle.
+        """
+        self._remove_listener = self._coordinator.add_listener(
+            self.async_write_ha_state
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister from the coordinator."""
+        if self._remove_listener is not None:
+            self._remove_listener()
+            self._remove_listener = None
 
     @property
     def is_on(self) -> bool:

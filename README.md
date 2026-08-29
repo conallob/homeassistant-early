@@ -7,7 +7,7 @@ A custom Home Assistant integration for [EARLY](https://early.app) (formerly kno
 ### Cloud API Integration
 - **Current Activity Sensor**: Displays the currently tracked activity via cloud API, by name (not just whether tracking is on or off)
 - **Activity Attributes**: Provides additional details like activity ID, name, start time, and notes
-- **Automatic Updates**: Polls the EARLY API every 30 seconds for current tracking status
+- **Automatic Updates**: Polls the EARLY API every 30 seconds for current tracking status, and refreshes immediately on a webhook callback when Home Assistant has a publicly reachable URL (see [Update Latency](#update-latency) below)
 - **Per-Activity Switches**: Every activity configured in your EARLY account is exposed as its own `switch` entity, so you can start/stop tracking a specific activity from an automation, dashboard tile, or phone widget
 
 ### Bluetooth Tracker Support
@@ -262,6 +262,47 @@ A phone Shortcuts automation ("if I open my work phone after 6pm") can call the 
 This integration uses the EARLY Public API v3:
 - **Base URL**: `https://api.timeular.com/api/v3`
 - **Documentation**: [https://developers.early.app](https://developers.early.app)
+
+#### Update Latency
+
+By default, the Cloud API sensor and activity switches update by polling
+the EARLY API every 30 seconds, so a change made in another app (or on the
+physical tracker) can take up to 30 seconds to show up in Home Assistant.
+
+If Home Assistant has a publicly reachable URL that EARLY's servers can
+reach (e.g. Home Assistant Cloud/Nabu Casa, or your own reverse proxy —
+see [Home Assistant's URL configuration
+docs](https://www.home-assistant.io/integrations/homeassistant/#external_url)),
+this integration also registers a webhook and subscribes it to EARLY's
+`trackingStarted`/`trackingStopped` events, so tracking changes are
+reflected immediately instead of waiting for the next poll. This is a pure
+optimization on top of polling, not a replacement for it: if no public URL
+is configured, or EARLY doesn't accept the webhook subscription, the
+integration keeps working exactly as before, on 30-second polling alone.
+No setup is required beyond having a public URL configured in Home
+Assistant - the integration handles subscribing/unsubscribing itself and
+falls back silently if that's not possible.
+
+The webhook-triggered refresh shares the same update path as the regular
+poll, so if a poll is already in progress when a webhook call arrives, the
+refresh it triggers waits for that poll to finish rather than jumping
+ahead of it - this keeps the update logic race-free at a small latency
+cost if the EARLY API happens to be slow to respond at that moment.
+
+The webhook URL registered with EARLY is unguessable but unauthenticated -
+anyone who obtains it can trigger a tracking refresh (never fake tracking
+data, since every call just re-fetches from EARLY's own API), rate-limited
+to at most once every couple of seconds. Treat it like any other secret
+URL: it isn't logged or displayed anywhere in the Home Assistant UI, and
+there's no need to share it outside of Home Assistant's own webhook
+configuration.
+
+Starting and stopping tracking share the same rate limit: if you switch
+activities quickly (stop one, immediately start another), the second
+change within that couple-of-seconds window falls back to the regular
+30-second poll instead of updating instantly - still no worse than
+before this feature existed, just not always "immediate" for a rapid
+switch.
 
 ### Bluetooth Tracker
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 import requests
 from homeassistant.components.sensor import SensorEntity
@@ -19,6 +20,7 @@ from .const import (
     API_ACTIVITIES_ENDPOINT,
     API_SIGN_IN_ENDPOINT,
     API_TRACKING_ENDPOINT,
+    API_WEBHOOK_SUBSCRIPTION_ENDPOINT,
     ATTR_ACTIVITY_ID,
     ATTR_ACTIVITY_NAME,
     ATTR_NOTE,
@@ -88,6 +90,45 @@ class EarlyAPICoordinator:
         self._activities: dict[str, str] = {}
         self._device_side_mapping: dict[int, str] = {}
         self._activities_last_fetch: datetime | None = None
+        self._listeners: list[Callable[[], None]] = []
+        # Serializes async_update()'s body so a webhook-triggered refresh
+        # (no_throttle=True, see webhook.py) can't interleave its
+        # token/tracking-data writes with a concurrently in-flight,
+        # poll-triggered call - @Throttle below only guards how often a
+        # call *starts*, not whether two calls can run at once.
+        self._update_lock = asyncio.Lock()
+
+    def add_listener(self, update_callback: Callable[[], None]) -> Callable[[], None]:
+        """Register a callback to be invoked whenever tracking data refreshes.
+
+        Used by entities so a webhook-triggered refresh (see webhook.py) is
+        reflected immediately via async_write_ha_state, instead of sitting
+        in the coordinator until the entity's own poll cycle catches up.
+        Returns a function that removes the listener again.
+        """
+        self._listeners.append(update_callback)
+
+        def remove_listener() -> None:
+            self._listeners.remove(update_callback)
+
+        return remove_listener
+
+    def _notify_listeners(self) -> None:
+        """Call every registered listener after a data refresh.
+
+        Each callback is isolated so one misbehaving entity can't stop the
+        others from being notified, or propagate out of async_update() and
+        break the coordinator refresh (poll- or webhook-triggered) itself.
+        Iterates a snapshot rather than self._listeners directly, so a
+        listener that adds/removes a listener synchronously (none do
+        today) can't skip an entry or raise a mutated-during-iteration
+        error.
+        """
+        for update_callback in list(self._listeners):
+            try:
+                update_callback()
+            except Exception:  # pylint: disable=broad-except
+                _LOGGER.exception("Error notifying EARLY coordinator listener")
 
     async def _get_token(self) -> str:
         """Get authentication token from EARLY API."""
@@ -195,25 +236,40 @@ class EarlyAPICoordinator:
 
     @Throttle(MIN_TIME_BETWEEN_UPDATES)
     async def async_update(self) -> None:
-        """Fetch data from EARLY API."""
-        try:
-            # Refresh activities at startup and at most once per hour
-            activities_stale = (
-                not self._activities
-                or self._activities_last_fetch is None
-                or utcnow() - self._activities_last_fetch > ACTIVITIES_REFRESH_INTERVAL
-            )
-            if activities_stale:
-                await self._fetch_activities()
+        """Fetch data from EARLY API.
 
-            # Fetch current tracking status
-            response = await self._request_with_retry("get", API_TRACKING_ENDPOINT)
-            self._tracking_data = response.json()
-            _LOGGER.debug("Updated EARLY tracking data: %s", self._tracking_data)
+        The fetch runs under self._update_lock so a webhook-triggered
+        refresh (no_throttle=True) can't interleave its writes with a
+        concurrently in-flight, poll-triggered call. Listeners are
+        notified after releasing the lock - they only read the result,
+        so they don't need its protection, and holding the lock through
+        every entity's async_write_ha_state() would widen the critical
+        section well beyond the writes it exists to protect, needlessly
+        blocking a webhook-triggered refresh behind a poll-triggered one
+        (or vice versa) for longer than necessary.
+        """
+        async with self._update_lock:
+            try:
+                # Refresh activities at startup and at most once per hour
+                activities_stale = (
+                    not self._activities
+                    or self._activities_last_fetch is None
+                    or utcnow() - self._activities_last_fetch
+                    > ACTIVITIES_REFRESH_INTERVAL
+                )
+                if activities_stale:
+                    await self._fetch_activities()
 
-        except requests.exceptions.RequestException as err:
-            _LOGGER.error("Error fetching EARLY tracking data: %s", err)
-            self._tracking_data = None
+                # Fetch current tracking status
+                response = await self._request_with_retry("get", API_TRACKING_ENDPOINT)
+                self._tracking_data = response.json()
+                _LOGGER.debug("Updated EARLY tracking data: %s", self._tracking_data)
+
+            except requests.exceptions.RequestException as err:
+                _LOGGER.error("Error fetching EARLY tracking data: %s", err)
+                self._tracking_data = None
+
+        self._notify_listeners()
 
     @property
     def tracking_data(self) -> dict[str, Any] | None:
@@ -262,6 +318,60 @@ class EarlyAPICoordinator:
             _LOGGER.error("Error stopping tracking: %s", err)
             raise
 
+    async def async_subscribe_webhook(self, event: str, target_url: str) -> str | None:
+        """Subscribe target_url to an EARLY webhook event.
+
+        Returns the subscription id EARLY assigns, or None if the
+        subscription request failed - callers should treat that as "no
+        webhook available" and keep relying on polling rather than erroring
+        out, since webhook support depends on Home Assistant having a
+        publicly reachable URL.
+        """
+        try:
+            response = await self._request_with_retry(
+                "post",
+                API_WEBHOOK_SUBSCRIPTION_ENDPOINT,
+                json={"event": event, "targetUrl": target_url},
+            )
+            subscription_id = response.json().get("id")
+            _LOGGER.debug(
+                "Subscribed to EARLY webhook event %s (subscription %s)",
+                event,
+                subscription_id,
+            )
+            return subscription_id
+        except requests.exceptions.RequestException as err:
+            _LOGGER.warning(
+                "Could not subscribe to EARLY webhook event %s: %s", event, err
+            )
+            return None
+        except Exception:  # pylint: disable=broad-except
+            # An unexpected response shape (e.g. a body that isn't a JSON
+            # object) means the POST above may still have created a live
+            # subscription on EARLY's side, even though we can't recover
+            # its id to track/unsubscribe it later. There's nothing more
+            # useful to do here than what a request failure already does -
+            # log it and let the caller treat this event as unsubscribed,
+            # rather than letting it crash webhook setup or getting
+            # silently swallowed further up the call stack.
+            _LOGGER.exception(
+                "Unexpected error subscribing to EARLY webhook event %s", event
+            )
+            return None
+
+    async def async_unsubscribe_webhook(self, subscription_id: str) -> None:
+        """Remove a previously created EARLY webhook subscription."""
+        try:
+            await self._request_with_retry(
+                "delete",
+                f"{API_WEBHOOK_SUBSCRIPTION_ENDPOINT}/{subscription_id}",
+            )
+            _LOGGER.debug("Unsubscribed EARLY webhook %s", subscription_id)
+        except requests.exceptions.RequestException as err:
+            _LOGGER.debug(
+                "Error unsubscribing EARLY webhook %s: %s", subscription_id, err
+            )
+
 
 class EarlyCurrentTrackingSensor(SensorEntity):
     """Representation of an EARLY current tracking sensor."""
@@ -272,6 +382,24 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         self._attr_name = "EARLY Current Activity"
         self._attr_unique_id = f"{DOMAIN}_current_tracking"
         self._attr_icon = "mdi:clock-outline"
+        self._remove_listener: Callable[[], None] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register for immediate updates when the coordinator refreshes.
+
+        This is what makes a webhook-triggered refresh (see webhook.py)
+        show up right away instead of waiting for this entity's own next
+        poll cycle.
+        """
+        self._remove_listener = self._coordinator.add_listener(
+            self.async_write_ha_state
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Unregister from the coordinator."""
+        if self._remove_listener is not None:
+            self._remove_listener()
+            self._remove_listener = None
 
     @property
     def _current_activity_name(self) -> str | None:

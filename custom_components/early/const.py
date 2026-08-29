@@ -11,6 +11,12 @@ API_BASE_URL = "https://api.timeular.com/api/v3"
 API_SIGN_IN_ENDPOINT = f"{API_BASE_URL}/developer/sign-in"
 API_TRACKING_ENDPOINT = f"{API_BASE_URL}/tracking"
 API_ACTIVITIES_ENDPOINT = f"{API_BASE_URL}/activities"
+API_WEBHOOK_SUBSCRIPTION_ENDPOINT = f"{API_BASE_URL}/webhooks/subscription"
+
+# EARLY webhook event names this integration subscribes to, so tracking
+# start/stop is reflected immediately instead of waiting for the next poll.
+WEBHOOK_EVENT_TRACKING_STARTED = "trackingStarted"
+WEBHOOK_EVENT_TRACKING_STOPPED = "trackingStopped"
 
 # Bluetooth Configuration
 BLE_SERVICE_UUID = "c7e70010-c847-11e6-8175-8c89a55d403c"
