@@ -83,6 +83,28 @@ class TestEarlyActivitySwitch:
 
         assert switch.is_on is False
 
+    def test_switch_is_on_true_flat_activity_id(self, mock_hass):
+        """Test switch is_on resolves a flat activityId field, not just nested activity.id.
+
+        Regression coverage: confirmed via real-account debug logs that
+        EARLY's tracking endpoint can return currentTracking with a flat
+        "activityId" field and no "activity" key at all. The old code only
+        checked currentTracking["activity"]["id"], so every switch's is_on
+        would resolve to False (never matching), regardless of which
+        activity was actually being tracked.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._tracking_data = {
+            "currentTracking": {
+                "id": 118278047,
+                "activityId": "1752293",
+                "startedAt": "2026-09-15T22:20:01.367",
+            }
+        }
+        switch = EarlyActivitySwitch(coordinator, "1752293", "Focus")
+
+        assert switch.is_on is True
+
     def test_switch_is_on_no_tracking(self, mock_hass):
         """Test switch is_on when nothing is being tracked."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")

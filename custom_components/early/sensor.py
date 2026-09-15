@@ -29,7 +29,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .util import is_bluetooth_entry
+from .util import get_current_activity_id, is_bluetooth_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -402,13 +402,11 @@ class EarlyCurrentTrackingSensor(SensorEntity):
             self._remove_listener = None
 
     @property
-    def _current_activity_name(self) -> str | None:
-        """Resolve the current activity's name.
+    def _current_activity_id(self) -> str | None:
+        """Resolve the current activity's id from the tracking data.
 
-        The tracking endpoint's currentTracking.activity object doesn't
-        reliably include a "name" field (observed in practice to return
-        only "id") - fall back to the activities list the coordinator
-        fetches separately from the activities endpoint.
+        See util.get_current_activity_id for why this checks two
+        different response shapes.
         """
         if not self._coordinator.tracking_data:
             return None
@@ -417,16 +415,34 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         if not current_tracking:
             return None
 
-        activity = current_tracking.get("activity", {})
-        name = activity.get("name")
+        return get_current_activity_id(current_tracking)
+
+    @property
+    def _current_activity_name(self) -> str | None:
+        """Resolve the current activity's name.
+
+        Prefers a "name" nested directly under currentTracking.activity if
+        the API ever provides one, but this has not been observed in
+        practice on either response shape (see util.get_current_activity_id)
+        - in practice the name always comes from the activities list the
+        coordinator fetches separately from the activities endpoint.
+        """
+        if not self._coordinator.tracking_data:
+            return None
+
+        current_tracking = self._coordinator.tracking_data.get("currentTracking")
+        if not current_tracking:
+            return None
+
+        name = current_tracking.get("activity", {}).get("name")
         if name:
             return name
 
-        activity_id = activity.get("id")
-        if activity_id:
-            return self._coordinator.get_all_activities().get(activity_id)
+        activity_id = self._current_activity_id
+        if not activity_id:
+            return None
 
-        return None
+        return self._coordinator.get_all_activities().get(activity_id)
 
     @property
     def state(self) -> str:
@@ -451,9 +467,8 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         if not current_tracking:
             return {"status": "idle"}
 
-        activity = current_tracking.get("activity", {})
         attributes = {
-            ATTR_ACTIVITY_ID: activity.get("id"),
+            ATTR_ACTIVITY_ID: self._current_activity_id,
             ATTR_ACTIVITY_NAME: self._current_activity_name,
             ATTR_STARTED_AT: current_tracking.get("startedAt"),
             ATTR_NOTE: current_tracking.get("note", {}).get("text"),
