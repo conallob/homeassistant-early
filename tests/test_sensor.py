@@ -917,6 +917,32 @@ class TestEarlyCurrentTrackingSensor:
 
         assert sensor.state == "Working"
 
+    def test_sensor_state_tracking_flat_activity_id(self, mock_hass):
+        """Test sensor state resolves the name from a flat activityId field.
+
+        Regression coverage: confirmed via real-account debug logs that
+        EARLY's tracking endpoint can return currentTracking with a flat
+        "activityId" field and no "activity" key at all, e.g.
+        {"id": 118278047, "activityId": "1752293", "startedAt": ...}.
+        The old code only ever looked at currentTracking["activity"]["id"],
+        so this shape resolved to a permanent "tracking" state with no
+        activity_id/activity_name attributes, no matter what the coordinator's
+        activities list contained.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"1752293": "Focus"}
+        coordinator._tracking_data = {
+            "currentTracking": {
+                "id": 118278047,
+                "activityId": "1752293",
+                "startedAt": "2026-09-15T22:20:01.367",
+                "note": {"text": None, "tags": [], "mentions": []},
+            }
+        }
+        sensor = EarlyCurrentTrackingSensor(coordinator)
+
+        assert sensor.state == "Focus"
+
     def test_sensor_state_tracking_no_name_unknown_activity_id(self, mock_hass):
         """Test sensor state when the activity id isn't in the activities map.
 
@@ -996,6 +1022,30 @@ class TestEarlyCurrentTrackingSensor:
         attributes = sensor.extra_state_attributes
         assert attributes["activity_id"] == "activity_1"
         assert attributes["activity_name"] == "Working"
+
+    def test_sensor_attributes_tracking_flat_activity_id(self, mock_hass):
+        """Test attributes resolve activity_id/activity_name from a flat activityId.
+
+        Regression coverage for the real-account response shape confirmed
+        via debug logs - see test_sensor_state_tracking_flat_activity_id.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"1752293": "Focus"}
+        coordinator._tracking_data = {
+            "currentTracking": {
+                "id": 118278047,
+                "activityId": "1752293",
+                "startedAt": "2026-09-15T22:20:01.367",
+                "note": {"text": None, "tags": [], "mentions": []},
+            }
+        }
+        sensor = EarlyCurrentTrackingSensor(coordinator)
+
+        attributes = sensor.extra_state_attributes
+        assert attributes["activity_id"] == "1752293"
+        assert attributes["activity_name"] == "Focus"
+        assert attributes["started_at"] == "2026-09-15T22:20:01.367"
+        assert "note" not in attributes
 
     def test_sensor_attributes_tracking_no_note(self, mock_hass):
         """Test sensor attributes when tracking without note."""

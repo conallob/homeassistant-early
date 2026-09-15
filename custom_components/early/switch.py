@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .util import is_bluetooth_entry
+from .util import get_current_activity_id, is_bluetooth_entry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,8 +122,7 @@ class EarlyActivitySwitch(SwitchEntity):
         if not current_tracking:
             return False
 
-        activity = current_tracking.get("activity", {})
-        current_activity_id = activity.get("id")
+        current_activity_id = get_current_activity_id(current_tracking)
 
         return current_activity_id == self._activity_id
 
