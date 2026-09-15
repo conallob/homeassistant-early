@@ -581,3 +581,65 @@ class TestActivitySwitchDynamicSync:
                 DOMAIN,
                 f"{mock_config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}",
             )
+
+    @pytest.mark.asyncio
+    async def test_add_and_remove_in_the_same_refresh(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test one activity added and another removed in the same refresh.
+
+        Both code paths are driven off the same two set-difference
+        computations (new_ids/removed_ids from current_ids vs. known_ids),
+        so this pins down that they're independent - an addition landing
+        in the same refresh as a removal shouldn't suppress either.
+        """
+        coordinator, async_add_entities = await self._setup(
+            mock_hass,
+            mock_config_entry,
+            {"activity_1": "Working", "activity_2": "Meeting"},
+        )
+
+        del coordinator._activities["activity_2"]
+        coordinator._activities["activity_3"] = "Focus"
+
+        with patch(
+            "custom_components.early.switch.ir.async_create_issue"
+        ) as mock_create_issue:
+            coordinator._notify_listeners()
+
+            new_entities = async_add_entities.call_args_list[1][0][0]
+            assert len(new_entities) == 1
+            assert new_entities[0]._activity_id == "activity_3"
+
+            mock_create_issue.assert_called_once()
+            _, kwargs = mock_create_issue.call_args
+            assert kwargs["translation_placeholders"]["activities"] == "Meeting"
+
+    @pytest.mark.asyncio
+    async def test_issue_keeps_firing_on_every_refresh_while_unresolved(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test async_create_issue re-fires on repeated refreshes, not just once.
+
+        Intentional behavior: removed_ids is derived from tracked_activities,
+        which is never pruned outside of a reload, so as long as the removed
+        activity stays gone this keeps calling async_create_issue on every
+        subsequent refresh. That's a cheap, idempotent upsert (keyed by
+        issue_id), not a bug - this pins it down as a regression guard.
+        """
+        coordinator, _ = await self._setup(
+            mock_hass,
+            mock_config_entry,
+            {"activity_1": "Working", "activity_2": "Meeting"},
+        )
+
+        del coordinator._activities["activity_2"]
+
+        with patch(
+            "custom_components.early.switch.ir.async_create_issue"
+        ) as mock_create_issue:
+            coordinator._notify_listeners()
+            coordinator._notify_listeners()
+            coordinator._notify_listeners()
+
+            assert mock_create_issue.call_count == 3

@@ -146,6 +146,8 @@ This is the building block for lock-screen widgets and Shortcuts automations: ad
 - `activity_id`: The unique ID of the activity
 - `activity_name`: The name of the activity
 
+**Keeping switches in sync with EARLY**: a new activity created in EARLY gets its switch added automatically on the next refresh - no need to reload the integration or restart Home Assistant to use it in an automation or widget. If an activity is deleted in EARLY instead, its switch isn't removed automatically (that requires touching Home Assistant's entity registry, which is more disruptive than adding one) - you'll see a **Repair** notification (**Settings** → **System** → **Repairs**) naming the removed activity, and clicking through it reloads the integration to clean up the stale switch.
+
 ## Example Automations
 
 ### Notify when starting work

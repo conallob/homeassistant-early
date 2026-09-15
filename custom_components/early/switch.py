@@ -131,6 +131,14 @@ async def async_setup_entry(
                 sorted(new_ids),
             )
 
+        # removed_ids stays derived from tracked_activities (never pruned
+        # outside of a reload - see its docstring above), so as long as the
+        # issue is unresolved this re-fires async_create_issue with the same
+        # arguments on every subsequent refresh, not just once. That's
+        # intentional and harmless (it's an upsert keyed by issue_id, and
+        # async_delete_issue below is a no-op lookup miss when nothing was
+        # ever created) - simpler than tracking "is this issue currently
+        # open" separately just to skip a cheap, idempotent call.
         removed_ids = known_ids - current_ids
         issue_id = f"{config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}"
         if removed_ids:
