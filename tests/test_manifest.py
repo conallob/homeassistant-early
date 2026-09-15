@@ -212,18 +212,18 @@ class TestManifestConsistency:
         assert translations_path.exists()
         assert translations_path.is_dir()
 
-    def test_removed_activities_issue_description_uses_activities_placeholder(self):
-        """Test the repair issue's own description consumes the {activities} placeholder.
+    def test_removed_activities_issue_has_no_top_level_description(self):
+        """Test the fixable issue doesn't also carry a top-level description.
 
-        Regression coverage: switch.py passes
-        translation_placeholders={"activities": ...} to
-        ir.async_create_issue(), but that placeholder is only useful if
-        some translation string actually references {activities} - a
-        top-level "description" on the issue itself (shown in the Repairs
-        list before the fix flow opens), not just the fix flow's own step
-        description. Checked in both strings.json (the source of truth)
-        and translations/en.json (what actually ships), since they're
-        maintained as two separate files in this repo.
+        Regression coverage: hassfest's translation schema treats a
+        top-level "description" and a "fix_flow" on the same issue as
+        mutually exclusive ("two or more values in the same group of
+        exclusion 'fixable'") - a fixable issue's description belongs in
+        its fix_flow step, not at the issue level. Checked in both
+        strings.json (the source of truth) and translations/en.json (what
+        actually ships), since they're maintained as two separate files in
+        this repo, and this exact combination broke hassfest validation in
+        CI once already.
         """
         base_path = Path(__file__).parent.parent / "custom_components" / "early"
 
@@ -232,4 +232,5 @@ class TestManifestConsistency:
                 data = json.load(f)
 
             issue = data["issues"]["removed_activities"]
-            assert "{activities}" in issue["description"], filename
+            assert "fix_flow" in issue
+            assert "description" not in issue
