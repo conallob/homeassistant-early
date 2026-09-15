@@ -34,3 +34,9 @@ ATTR_NOTE = "note"
 ATTR_ORIENTATION = "orientation"
 ATTR_RSSI = "rssi"
 ATTR_BATTERY_LEVEL = "battery_level"
+
+# Repair issue raised when an activity switch's activity no longer exists in
+# EARLY (deleted since this entry was last set up/reloaded) - see switch.py's
+# _async_sync_activity_switches and repairs.py's fix flow, which reloads the
+# entry to remove the stale switch(es).
+ISSUE_REMOVED_ACTIVITIES = "removed_activities"

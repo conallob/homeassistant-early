@@ -7,10 +7,11 @@ from typing import Any, Callable
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, ISSUE_REMOVED_ACTIVITIES
 from .util import get_current_activity_id, is_bluetooth_entry
 
 _LOGGER = logging.getLogger(__name__)
@@ -61,15 +62,85 @@ async def async_setup_entry(
         config_entry.entry_id if is_bluetooth_entry(config_entry) else None
     )
 
-    # Create a switch for each activity
-    switches = [
-        EarlyActivitySwitch(
+    # Tracks every activity a switch has been created for so far, by id ->
+    # name. Kept separately from coordinator.get_all_activities() because
+    # that dict is overwritten wholesale on every activities refresh (see
+    # sensor.py's _fetch_activities) - once an activity is deleted in EARLY
+    # it disappears from there, but this integration still needs its name
+    # to show in the repair issue raised below.
+    tracked_activities = dict(activities)
+
+    def _build_switch(activity_id: str, activity_name: str) -> EarlyActivitySwitch:
+        return EarlyActivitySwitch(
             coordinator, activity_id, activity_name, entry_id_for_unique_id
         )
-        for activity_id, activity_name in activities.items()
-    ]
 
-    async_add_entities(switches, True)
+    async_add_entities(
+        [_build_switch(aid, name) for aid, name in tracked_activities.items()],
+        True,
+    )
+
+    @callback
+    def _async_sync_activity_switches() -> None:
+        """Reconcile switches with the coordinator's current activities list.
+
+        Switches are otherwise only ever created once, at platform setup -
+        an activity added or deleted in EARLY afterward would go unnoticed
+        until a full integration reload. Registered as a coordinator
+        listener (the same pub/sub used for webhook push-updates - see
+        sensor.py's EarlyAPICoordinator.add_listener), so this re-checks on
+        every refresh, not just at startup.
+
+        New activities get a switch added immediately, no reload needed.
+        Removed activities are more disruptive to handle live (cleanly
+        removing an entity means touching the entity registry, not just
+        this platform), so those are surfaced as a fixable repair issue
+        that reloads the entry instead - see repairs.py.
+        """
+        current_activities = coordinator.get_all_activities()
+        current_ids = set(current_activities)
+        known_ids = set(tracked_activities)
+
+        new_ids = current_ids - known_ids
+        if new_ids:
+            new_switches = [
+                _build_switch(activity_id, current_activities[activity_id])
+                for activity_id in new_ids
+            ]
+            tracked_activities.update(
+                (activity_id, current_activities[activity_id])
+                for activity_id in new_ids
+            )
+            async_add_entities(new_switches, True)
+            _LOGGER.debug(
+                "Added %d new EARLY activity switch(es) for entry %s: %s",
+                len(new_switches),
+                config_entry.entry_id,
+                sorted(new_ids),
+            )
+
+        removed_ids = known_ids - current_ids
+        issue_id = f"{config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}"
+        if removed_ids:
+            removed_names = sorted(tracked_activities[aid] for aid in removed_ids)
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=True,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=ISSUE_REMOVED_ACTIVITIES,
+                translation_placeholders={"activities": ", ".join(removed_names)},
+                data={
+                    "entry_id": config_entry.entry_id,
+                    "removed_activity_names": ", ".join(removed_names),
+                },
+            )
+        else:
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+    remove_listener = coordinator.add_listener(_async_sync_activity_switches)
+    config_entry.async_on_unload(remove_listener)
 
 
 class EarlyActivitySwitch(SwitchEntity):

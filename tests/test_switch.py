@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.early.const import DOMAIN
+from custom_components.early.const import DOMAIN, ISSUE_REMOVED_ACTIVITIES
 from custom_components.early.sensor import EarlyAPICoordinator
 from custom_components.early.switch import EarlyActivitySwitch, async_setup_entry
 
@@ -379,3 +379,167 @@ class TestSwitchPlatformSetup:
         await async_setup_entry(mock_hass, mock_config_entry, async_add_entities)
 
         async_add_entities.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_setup_entry_registers_unload_cleanup(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test the coordinator listener is torn down when the entry unloads."""
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {"activity_1": "Working"}
+        coordinator._tracking_data = {"currentTracking": None}
+        coordinator.async_update = AsyncMock()
+
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {"coordinator": coordinator}
+        }
+
+        await async_setup_entry(mock_hass, mock_config_entry, AsyncMock())
+
+        assert len(coordinator._listeners) == 1
+        assert mock_config_entry._on_unload is not None
+        assert len(mock_config_entry._on_unload) == 1
+
+        # Simulate the entry unloading.
+        mock_config_entry._on_unload[0]()
+        assert len(coordinator._listeners) == 0
+
+
+class TestActivitySwitchDynamicSync:
+    """Test switch.py's dynamic add-on-new-activity / repair-on-removed-activity behavior.
+
+    Switches are otherwise only ever created once, at platform setup - an
+    activity added or deleted in EARLY afterward would go unnoticed until a
+    full integration reload. _async_sync_activity_switches (registered as a
+    coordinator listener) is what catches that on every subsequent refresh.
+    """
+
+    async def _setup(self, mock_hass, mock_config_entry, activities):
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = dict(activities)
+        coordinator._tracking_data = {"currentTracking": None}
+        coordinator.async_update = AsyncMock()
+
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {"coordinator": coordinator}
+        }
+        async_add_entities = MagicMock()
+
+        await async_setup_entry(mock_hass, mock_config_entry, async_add_entities)
+
+        return coordinator, async_add_entities
+
+    @pytest.mark.asyncio
+    async def test_new_activity_gets_a_switch_without_reload(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test a new activity gets its switch added immediately, no reload."""
+        coordinator, async_add_entities = await self._setup(
+            mock_hass, mock_config_entry, {"activity_1": "Working"}
+        )
+        assert async_add_entities.call_count == 1
+
+        coordinator._activities["activity_2"] = "Meeting"
+        coordinator._notify_listeners()
+
+        assert async_add_entities.call_count == 2
+        new_entities = async_add_entities.call_args_list[1][0][0]
+        assert len(new_entities) == 1
+        assert new_entities[0]._activity_id == "activity_2"
+        assert new_entities[0]._activity_name == "Meeting"
+
+    @pytest.mark.asyncio
+    async def test_no_new_switch_created_twice_for_the_same_activity(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test repeated notifications with no further changes don't re-add switches."""
+        coordinator, async_add_entities = await self._setup(
+            mock_hass, mock_config_entry, {"activity_1": "Working"}
+        )
+
+        coordinator._activities["activity_2"] = "Meeting"
+        coordinator._notify_listeners()
+        coordinator._notify_listeners()
+        coordinator._notify_listeners()
+
+        # One call for the initial setup, one for the single new activity -
+        # the later no-op notifications must not re-add it.
+        assert async_add_entities.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_removed_activity_raises_a_fixable_repair_issue(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test a deleted EARLY activity raises a fixable repair issue."""
+        coordinator, _ = await self._setup(
+            mock_hass,
+            mock_config_entry,
+            {"activity_1": "Working", "activity_2": "Meeting"},
+        )
+
+        del coordinator._activities["activity_2"]
+
+        with patch(
+            "custom_components.early.switch.ir.async_create_issue"
+        ) as mock_create_issue:
+            coordinator._notify_listeners()
+
+            mock_create_issue.assert_called_once()
+            args, kwargs = mock_create_issue.call_args
+            assert args[1] == DOMAIN
+            assert args[2] == f"{mock_config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}"
+            assert kwargs["is_fixable"] is True
+            assert kwargs["translation_key"] == ISSUE_REMOVED_ACTIVITIES
+            assert kwargs["translation_placeholders"]["activities"] == "Meeting"
+            assert kwargs["data"]["entry_id"] == mock_config_entry.entry_id
+            assert kwargs["data"]["removed_activity_names"] == "Meeting"
+
+    @pytest.mark.asyncio
+    async def test_no_issue_created_when_activities_unchanged(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test a plain refresh with no activity changes never creates an issue."""
+        coordinator, _ = await self._setup(
+            mock_hass, mock_config_entry, {"activity_1": "Working"}
+        )
+
+        with patch(
+            "custom_components.early.switch.ir.async_create_issue"
+        ) as mock_create_issue, patch(
+            "custom_components.early.switch.ir.async_delete_issue"
+        ) as mock_delete_issue:
+            coordinator._notify_listeners()
+
+            mock_create_issue.assert_not_called()
+            mock_delete_issue.assert_called_once_with(
+                mock_hass,
+                DOMAIN,
+                f"{mock_config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}",
+            )
+
+    @pytest.mark.asyncio
+    async def test_issue_cleared_once_removed_activity_reappears(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test the repair issue is cleared if the activity list matches again."""
+        coordinator, _ = await self._setup(
+            mock_hass,
+            mock_config_entry,
+            {"activity_1": "Working", "activity_2": "Meeting"},
+        )
+
+        del coordinator._activities["activity_2"]
+        with patch("custom_components.early.switch.ir.async_create_issue"):
+            coordinator._notify_listeners()
+
+        coordinator._activities["activity_2"] = "Meeting"
+        with patch(
+            "custom_components.early.switch.ir.async_delete_issue"
+        ) as mock_delete_issue:
+            coordinator._notify_listeners()
+
+            mock_delete_issue.assert_called_once_with(
+                mock_hass,
+                DOMAIN,
+                f"{mock_config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}",
+            )
