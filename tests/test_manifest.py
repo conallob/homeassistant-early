@@ -211,3 +211,25 @@ class TestManifestConsistency:
         )
         assert translations_path.exists()
         assert translations_path.is_dir()
+
+    def test_removed_activities_issue_description_uses_activities_placeholder(self):
+        """Test the repair issue's own description consumes the {activities} placeholder.
+
+        Regression coverage: switch.py passes
+        translation_placeholders={"activities": ...} to
+        ir.async_create_issue(), but that placeholder is only useful if
+        some translation string actually references {activities} - a
+        top-level "description" on the issue itself (shown in the Repairs
+        list before the fix flow opens), not just the fix flow's own step
+        description. Checked in both strings.json (the source of truth)
+        and translations/en.json (what actually ships), since they're
+        maintained as two separate files in this repo.
+        """
+        base_path = Path(__file__).parent.parent / "custom_components" / "early"
+
+        for filename in ("strings.json", "translations/en.json"):
+            with open(base_path / filename) as f:
+                data = json.load(f)
+
+            issue = data["issues"]["removed_activities"]
+            assert "{activities}" in issue["description"], filename

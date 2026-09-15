@@ -35,6 +35,7 @@
   "issues": {
     "removed_activities": {
       "title": "EARLY activities were removed",
+      "description": "The following activities no longer exist in your EARLY account: {activities}.",
       "fix_flow": {
         "step": {
           "confirm": {
