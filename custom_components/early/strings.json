@@ -31,5 +31,18 @@
     "abort": {
       "already_configured": "This EARLY account is already configured."
     }
+  },
+  "issues": {
+    "removed_activities": {
+      "title": "EARLY activities were removed",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Reload to remove switches for deleted EARLY activities",
+            "description": "The following activities no longer exist in your EARLY account: {activities}. Their switches will remain in Home Assistant, unusable, until the integration is reloaded.\n\nPress **Submit** to reload the integration now and remove them."
+          }
+        }
+      }
+    }
   }
 }
