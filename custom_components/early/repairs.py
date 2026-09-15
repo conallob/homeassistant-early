@@ -52,7 +52,7 @@ async def async_create_fix_flow(
     data: dict[str, Any] | None,
 ) -> RepairsFlow:
     """Create the fix flow for a given issue."""
-    if data and ISSUE_REMOVED_ACTIVITIES in issue_id:
+    if data and issue_id.endswith(f"_{ISSUE_REMOVED_ACTIVITIES}"):
         entry_id = data.get("entry_id")
         if entry_id and hass.config_entries.async_get_entry(entry_id):
             return RemovedActivitiesRepairFlow(

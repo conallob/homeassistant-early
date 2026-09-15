@@ -49,8 +49,19 @@ async def async_setup_entry(
     activities = coordinator.get_all_activities()
 
     if not activities:
-        _LOGGER.warning("No activities found to create switches")
-        return
+        # No activities yet (fresh EARLY account, or a transient empty
+        # response from the initial fetch) - still fall through to
+        # register _async_sync_activity_switches below instead of
+        # returning early. Bailing out here entirely would mean any
+        # activity created afterward never gets a switch, since this
+        # function is the only place that listener gets attached -
+        # exactly the "no switch until a reload" gap this platform exists
+        # to close.
+        _LOGGER.warning(
+            "No activities found for entry %s; switches will be added "
+            "automatically once EARLY reports one",
+            config_entry.entry_id,
+        )
 
     # Bluetooth entries are a new source of activity switches (previously
     # they were skipped entirely). Scope their unique_id by config entry so
@@ -75,10 +86,11 @@ async def async_setup_entry(
             coordinator, activity_id, activity_name, entry_id_for_unique_id
         )
 
-    async_add_entities(
-        [_build_switch(aid, name) for aid, name in tracked_activities.items()],
-        True,
-    )
+    if tracked_activities:
+        async_add_entities(
+            [_build_switch(aid, name) for aid, name in tracked_activities.items()],
+            True,
+        )
 
     @callback
     def _async_sync_activity_switches() -> None:

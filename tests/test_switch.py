@@ -381,6 +381,44 @@ class TestSwitchPlatformSetup:
         async_add_entities.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_async_setup_entry_no_activities_still_registers_sync_listener(
+        self, mock_hass, mock_config_entry
+    ):
+        """Test the dynamic-sync listener is registered even starting from zero activities.
+
+        Regression coverage: async_setup_entry used to return early when
+        the initial activities fetch was empty, before
+        _async_sync_activity_switches was ever registered as a coordinator
+        listener. Since that registration only happens here, a fresh EARLY
+        account (or a transient empty first fetch) meant any activity
+        created afterward would never get a switch until a full reload -
+        exactly the gap this platform exists to close.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+        coordinator._activities = {}
+        coordinator._tracking_data = {"currentTracking": None}
+        coordinator.async_update = AsyncMock()
+
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {"coordinator": coordinator}
+        }
+        async_add_entities = MagicMock()
+
+        await async_setup_entry(mock_hass, mock_config_entry, async_add_entities)
+
+        async_add_entities.assert_not_called()
+        assert len(coordinator._listeners) == 1
+
+        # An activity now exists (e.g. the user just created one in EARLY).
+        coordinator._activities["activity_1"] = "Working"
+        coordinator._notify_listeners()
+
+        async_add_entities.assert_called_once()
+        new_entities = async_add_entities.call_args[0][0]
+        assert len(new_entities) == 1
+        assert new_entities[0]._activity_id == "activity_1"
+
+    @pytest.mark.asyncio
     async def test_async_setup_entry_registers_unload_cleanup(
         self, mock_hass, mock_config_entry
     ):

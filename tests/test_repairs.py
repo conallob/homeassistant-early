@@ -56,6 +56,32 @@ class TestAsyncCreateFixFlow:
 
         assert isinstance(flow, ConfirmRepairFlow)
 
+    @pytest.mark.asyncio
+    async def test_matches_issue_id_by_suffix_not_substring(self):
+        """Test an issue_id merely containing the translation key isn't matched.
+
+        Regression coverage: matching was originally
+        `ISSUE_REMOVED_ACTIVITIES in issue_id`, a substring test - any
+        unrelated issue_id that happened to contain "removed_activities"
+        anywhere (not just as this integration's own suffix) would have
+        been wrongly routed to RemovedActivitiesRepairFlow. issue_id is
+        always built as f"{entry_id}_{ISSUE_REMOVED_ACTIVITIES}" elsewhere,
+        so an endswith(f"_{ISSUE_REMOVED_ACTIVITIES}") suffix check is what
+        that format actually implies.
+        """
+        from homeassistant.components.repairs import ConfirmRepairFlow
+
+        hass = MagicMock()
+        hass.config_entries.async_get_entry.return_value = MagicMock()
+
+        flow = await async_create_fix_flow(
+            hass,
+            "removed_activities_but_not_really",
+            {"entry_id": "test_entry_id", "removed_activity_names": "Meeting"},
+        )
+
+        assert isinstance(flow, ConfirmRepairFlow)
+
 
 class TestRemovedActivitiesRepairFlow:
     """Test RemovedActivitiesRepairFlow."""
