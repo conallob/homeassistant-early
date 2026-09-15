@@ -103,10 +103,12 @@ async def async_setup_entry(
         sensor.py's EarlyAPICoordinator.add_listener), so this re-checks on
         every refresh, not just at startup.
 
-        New activities get a switch added as soon as this fires, no reload
-        needed - but this only runs when coordinator.get_all_activities()
-        actually changes, which (per sensor.py's ACTIVITIES_REFRESH_INTERVAL)
-        is at most once an hour, not on every ~30s tracking poll. So "no
+        This function itself runs on every coordinator notify - every ~30s
+        tracking poll (DEFAULT_SCAN_INTERVAL) or webhook-triggered refresh -
+        but coordinator.get_all_activities() only actually changes at most
+        once an hour (sensor.py's ACTIVITIES_REFRESH_INTERVAL), so most of
+        those runs are a no-op diff. New activities get a switch added on
+        the first run after they show up there, no reload needed - but "no
         reload needed" means "within about an hour", not "instantly".
         Removed activities are more disruptive to handle live (cleanly
         removing an entity means touching the entity registry, not just
