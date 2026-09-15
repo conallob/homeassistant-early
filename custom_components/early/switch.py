@@ -103,11 +103,19 @@ async def async_setup_entry(
         sensor.py's EarlyAPICoordinator.add_listener), so this re-checks on
         every refresh, not just at startup.
 
-        New activities get a switch added immediately, no reload needed.
+        New activities get a switch added as soon as this fires, no reload
+        needed - but this only runs when coordinator.get_all_activities()
+        actually changes, which (per sensor.py's ACTIVITIES_REFRESH_INTERVAL)
+        is at most once an hour, not on every ~30s tracking poll. So "no
+        reload needed" means "within about an hour", not "instantly".
         Removed activities are more disruptive to handle live (cleanly
         removing an entity means touching the entity registry, not just
         this platform), so those are surfaced as a fixable repair issue
         that reloads the entry instead - see repairs.py.
+
+        Known gap: this only diffs by activity id, so an activity renamed
+        in EARLY without changing id is neither re-added nor flagged - its
+        switch's name stays stale until an unrelated reload.
         """
         current_activities = coordinator.get_all_activities()
         current_ids = set(current_activities)

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant import data_entry_flow
 from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResult
 
 from .const import ISSUE_REMOVED_ACTIVITIES
 
@@ -28,13 +28,13 @@ class RemovedActivitiesRepairFlow(RepairsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, str] | None = None
-    ) -> data_entry_flow.FlowResult:
+    ) -> FlowResult:
         """Handle the first step of the fix flow."""
         return await self.async_step_confirm()
 
     async def async_step_confirm(
         self, user_input: dict[str, str] | None = None
-    ) -> data_entry_flow.FlowResult:
+    ) -> FlowResult:
         """Reload the entry once the user confirms."""
         if user_input is not None:
             await self.hass.config_entries.async_reload(self._entry_id)
