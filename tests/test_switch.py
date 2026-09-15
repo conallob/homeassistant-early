@@ -487,6 +487,34 @@ class TestActivitySwitchDynamicSync:
         assert new_entities[0]._activity_name == "Meeting"
 
     @pytest.mark.asyncio
+    async def test_new_activity_on_bluetooth_entry_gets_entry_scoped_unique_id(
+        self, mock_hass, mock_bluetooth_config_entry_with_api
+    ):
+        """Test a dynamically-added switch on a Bluetooth+API entry is still scoped.
+
+        CLAUDE.md calls out that Bluetooth+API entries scope their
+        switches' unique_id by config_entry.entry_id (to avoid colliding
+        with a Cloud API entry for the same account), while plain API
+        entries don't. _build_switch is shared between the initial setup
+        and _async_sync_activity_switches, but this pins down that the
+        entry-scoping still applies to a switch added later via the sync
+        listener, not just the ones created at initial setup.
+        """
+        coordinator, async_add_entities = await self._setup(
+            mock_hass, mock_bluetooth_config_entry_with_api, {"activity_1": "Working"}
+        )
+
+        coordinator._activities["activity_2"] = "Meeting"
+        coordinator._notify_listeners()
+
+        new_entities = async_add_entities.call_args_list[1][0][0]
+        assert len(new_entities) == 1
+        assert new_entities[0].unique_id == (
+            f"{DOMAIN}_{mock_bluetooth_config_entry_with_api.entry_id}"
+            "_activity_activity_2"
+        )
+
+    @pytest.mark.asyncio
     async def test_no_new_switch_created_twice_for_the_same_activity(
         self, mock_hass, mock_config_entry
     ):
@@ -528,7 +556,7 @@ class TestActivitySwitchDynamicSync:
             assert args[2] == f"{mock_config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}"
             assert kwargs["is_fixable"] is True
             assert kwargs["translation_key"] == ISSUE_REMOVED_ACTIVITIES
-            assert kwargs["translation_placeholders"]["activities"] == "Meeting"
+            assert "translation_placeholders" not in kwargs
             assert kwargs["data"]["entry_id"] == mock_config_entry.entry_id
             assert kwargs["data"]["removed_activity_names"] == "Meeting"
 
@@ -613,7 +641,7 @@ class TestActivitySwitchDynamicSync:
 
             mock_create_issue.assert_called_once()
             _, kwargs = mock_create_issue.call_args
-            assert kwargs["translation_placeholders"]["activities"] == "Meeting"
+            assert kwargs["data"]["removed_activity_names"] == "Meeting"
 
     @pytest.mark.asyncio
     async def test_issue_keeps_firing_on_every_refresh_while_unresolved(

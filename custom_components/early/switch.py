@@ -151,6 +151,12 @@ async def async_setup_entry(
         issue_id = f"{config_entry.entry_id}_{ISSUE_REMOVED_ACTIVITIES}"
         if removed_ids:
             removed_names = sorted(tracked_activities[aid] for aid in removed_ids)
+            # No translation_placeholders here: the issue's own
+            # translation (title only, no top-level description - see
+            # test_removed_activities_issue_has_no_top_level_description)
+            # doesn't reference {activities}, so there'd be nothing to
+            # consume it. The names only ever get shown via the fix flow's
+            # own description_placeholders, built from data below.
             ir.async_create_issue(
                 hass,
                 DOMAIN,
@@ -158,7 +164,6 @@ async def async_setup_entry(
                 is_fixable=True,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=ISSUE_REMOVED_ACTIVITIES,
-                translation_placeholders={"activities": ", ".join(removed_names)},
                 data={
                     "entry_id": config_entry.entry_id,
                     "removed_activity_names": ", ".join(removed_names),
