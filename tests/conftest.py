@@ -92,18 +92,6 @@ def mock_api_token_response():
 
 
 @pytest.fixture(scope="session")
-def mock_spaces_response():
-    """Return a mock EARLY spaces ("folder") API response.
-
-    Session-scoped for performance as this is immutable data. Empty by
-    default - most tests use activity fixtures with no "spaceId", so
-    _fetch_spaces still runs (and consumes a mocked HTTP call) but its
-    result is never looked up.
-    """
-    return {"data": []}
-
-
-@pytest.fixture(scope="session")
 def mock_spaces_response_named():
     """Return a mock EARLY spaces response with real, named spaces.
 

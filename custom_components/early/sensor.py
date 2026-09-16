@@ -203,7 +203,11 @@ class EarlyAPICoordinator:
         own set of (often identically-named) activities. A failure here is
         logged and left non-fatal: _fetch_activities falls back to showing
         bare activity names via build_activity_display_name rather than
-        failing the whole activities refresh over a cosmetic prefix.
+        failing the whole activities refresh over a cosmetic prefix. This is
+        called from _fetch_activities before its own try block, so this
+        method must swallow everything itself, not just RequestException -
+        a malformed /space payload (e.g. an entry missing "id") must not be
+        allowed to raise out of here and skip the activities fetch entirely.
         """
         try:
             response = await self._request_with_retry("get", API_SPACES_ENDPOINT)
@@ -218,6 +222,8 @@ class EarlyAPICoordinator:
             }
         except requests.exceptions.RequestException as err:
             _LOGGER.error("Error fetching EARLY spaces: %s", err)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected error fetching EARLY spaces")
 
     async def _fetch_activities(self) -> None:
         """Fetch activities list to map activity IDs to names."""

@@ -173,6 +173,46 @@ class TestEarlyAPICoordinator:
         assert coordinator._activities["activity_1"] == "Working"
 
     @pytest.mark.asyncio
+    async def test_fetch_activities_survives_malformed_spaces_payload(
+        self, mock_hass, mock_api_token_response, mock_activities_response
+    ):
+        """Test a malformed /space entry doesn't skip the activities fetch.
+
+        Regression coverage: _fetch_spaces originally only caught
+        requests.exceptions.RequestException, but it's called from
+        _fetch_activities *before* that method's own try block - a
+        response shape surprise (e.g. a space missing "id") would raise
+        a bare KeyError that propagated all the way out of
+        _fetch_activities, skipping the activities/device-side refresh
+        entirely for that cycle instead of just degrading to unprefixed
+        names as documented.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+
+        token_response = MagicMock()
+        token_response.json.return_value = mock_api_token_response
+        token_response.raise_for_status = MagicMock()
+
+        malformed_spaces_response = MagicMock()
+        malformed_spaces_response.json.return_value = {"data": [{"name": "No Id"}]}
+        malformed_spaces_response.raise_for_status = MagicMock()
+
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response
+        activities_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            token_response,
+            malformed_spaces_response,
+            activities_response,
+        ]
+
+        await coordinator._fetch_activities()
+
+        assert coordinator._spaces == {}
+        assert coordinator._activities["activity_1"] == "Working"
+
+    @pytest.mark.asyncio
     async def test_fetch_activities_empty(self, mock_hass, mock_api_token_response):
         """Test fetching activities with empty response."""
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
