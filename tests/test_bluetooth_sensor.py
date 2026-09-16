@@ -350,6 +350,11 @@ class TestBluetoothSensorPlatformSetup:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        # Mock spaces request
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
@@ -357,6 +362,7 @@ class TestBluetoothSensorPlatformSetup:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
         ]
 

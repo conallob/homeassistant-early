@@ -91,7 +91,7 @@ You can set up both the Bluetooth tracker and the Cloud API simultaneously. They
 
 **Attributes**:
 - `activity_id`: The unique ID of the current activity
-- `activity_name`: The name of the current activity
+- `activity_name`: The name of the current activity (prefixed with its EARLY space name if it belongs to one - see [Activity names and EARLY spaces](#activity-names-and-early-spaces))
 - `started_at`: When the current tracking session started (ISO 8601 format)
 - `note`: Any note associated with the current tracking session
 
@@ -147,6 +147,12 @@ This is the building block for lock-screen widgets and Shortcuts automations: ad
 - `activity_name`: The name of the activity
 
 **Keeping switches in sync with EARLY**: a new activity created in EARLY gets its switch added automatically, without needing to reload the integration or restart Home Assistant - but not instantly. It shows up the next time the activities list refreshes, which happens once an hour (or on Home Assistant startup); this integration doesn't re-fetch the full activities list on every 30-second tracking poll to avoid an extra API call that often. If an activity is deleted in EARLY instead, its switch isn't removed automatically (that requires touching Home Assistant's entity registry, which is more disruptive than adding one) - you'll see a **Repair** notification (**Settings** → **System** → **Repairs**) naming the removed activity, and clicking through it reloads the integration to clean up the stale switch.
+
+### Activity names and EARLY spaces
+
+EARLY lets you organize activities into separate **spaces** (e.g. one space per employer or context) - a common setup for tracking the same categories (like "Administrivia" or "Meetings") separately per space. Since activity names aren't unique across spaces, this integration prefixes each activity's display name with its space name wherever it's shown: `<Space>: <Activity>` (for example, `Google: Administrivia` and `Andromeda: Administrivia`). This applies to `sensor.early_current_activity`'s state/`activity_name` attribute, the Bluetooth tracker's current-activity sensor, and every activity switch's name.
+
+If an activity has no space, or the space name can't be resolved (e.g. a transient API failure), its name is shown unprefixed as before.
 
 ## Example Automations
 

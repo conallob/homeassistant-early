@@ -19,6 +19,7 @@ from homeassistant.util.dt import utcnow
 from .const import (
     API_ACTIVITIES_ENDPOINT,
     API_SIGN_IN_ENDPOINT,
+    API_SPACES_ENDPOINT,
     API_TRACKING_ENDPOINT,
     API_WEBHOOK_SUBSCRIPTION_ENDPOINT,
     ATTR_ACTIVITY_ID,
@@ -29,7 +30,11 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .util import get_current_activity_id, is_bluetooth_entry
+from .util import (
+    build_activity_display_name,
+    get_current_activity_id,
+    is_bluetooth_entry,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,6 +93,7 @@ class EarlyAPICoordinator:
         self._token: str | None = None
         self._tracking_data: dict[str, Any] | None = None
         self._activities: dict[str, str] = {}
+        self._spaces: dict[str, str] = {}
         self._device_side_mapping: dict[int, str] = {}
         self._activities_last_fetch: datetime | None = None
         self._listeners: list[Callable[[], None]] = []
@@ -189,8 +195,30 @@ class EarlyAPICoordinator:
         response.raise_for_status()
         return response
 
+    async def _fetch_spaces(self) -> None:
+        """Fetch the account's spaces to map space IDs to display names.
+
+        Spaces are EARLY's "folder" concept - accounts that separate work by
+        employer/context typically have one space per folder, each with its
+        own set of (often identically-named) activities. A failure here is
+        logged and left non-fatal: _fetch_activities falls back to showing
+        bare activity names via build_activity_display_name rather than
+        failing the whole activities refresh over a cosmetic prefix.
+        """
+        try:
+            response = await self._request_with_retry("get", API_SPACES_ENDPOINT)
+            data = response.json()
+            self._spaces = {
+                space["id"]: space.get("name", "Unknown Space")
+                for space in data.get("data", [])
+            }
+        except requests.exceptions.RequestException as err:
+            _LOGGER.error("Error fetching EARLY spaces: %s", err)
+
     async def _fetch_activities(self) -> None:
         """Fetch activities list to map activity IDs to names."""
+        await self._fetch_spaces()
+
         try:
             response = await self._request_with_retry("get", API_ACTIVITIES_ENDPOINT)
             data = response.json()
@@ -199,7 +227,10 @@ class EarlyAPICoordinator:
             # and device side to activity name
             if "activities" in data:
                 self._activities = {
-                    activity["id"]: activity.get("name", "Unknown Activity")
+                    activity["id"]: build_activity_display_name(
+                        activity.get("name", "Unknown Activity"),
+                        self._spaces.get(activity.get("spaceId")),
+                    )
                     for activity in data["activities"]
                 }
 
@@ -216,8 +247,11 @@ class EarlyAPICoordinator:
                         # should not normally appear here - if it does, it's
                         # treated like any other side and simply won't match
                         # anything meaningful via get_activity_by_device_side.
-                        self._device_side_mapping[int(device_side)] = activity.get(
-                            "name", "Unknown Activity"
+                        self._device_side_mapping[int(device_side)] = (
+                            build_activity_display_name(
+                                activity.get("name", "Unknown Activity"),
+                                self._spaces.get(activity.get("spaceId")),
+                            )
                         )
 
                 self._activities_last_fetch = utcnow()

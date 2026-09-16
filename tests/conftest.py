@@ -92,6 +92,63 @@ def mock_api_token_response():
 
 
 @pytest.fixture(scope="session")
+def mock_spaces_response():
+    """Return a mock EARLY spaces ("folder") API response.
+
+    Session-scoped for performance as this is immutable data. Empty by
+    default - most tests use activity fixtures with no "spaceId", so
+    _fetch_spaces still runs (and consumes a mocked HTTP call) but its
+    result is never looked up.
+    """
+    return {"data": []}
+
+
+@pytest.fixture(scope="session")
+def mock_spaces_response_named():
+    """Return a mock EARLY spaces response with real, named spaces.
+
+    Mirrors a real account's GET /space response - used together with
+    mock_activities_response_multi_space to test that activities in
+    different spaces get their space name prefixed onto their display
+    name (see util.build_activity_display_name).
+    """
+    return {
+        "data": [
+            {"id": "space_1", "name": "Google"},
+            {"id": "space_2", "name": "Andromeda"},
+        ]
+    }
+
+
+@pytest.fixture(scope="session")
+def mock_activities_response_multi_space():
+    """Return a mock activities response with the same name across two spaces.
+
+    Mirrors the real-world case reported by a user: identically-named
+    activities (e.g. "Administrivia") in more than one EARLY space
+    ("folder") because they track the same categories per employer/context.
+    """
+    return {
+        "activities": [
+            {
+                "id": "activity_1",
+                "name": "Administrivia",
+                "color": "#FF0000",
+                "spaceId": "space_1",
+                "deviceSide": None,
+            },
+            {
+                "id": "activity_2",
+                "name": "Administrivia",
+                "color": "#00FF00",
+                "spaceId": "space_2",
+                "deviceSide": 1,
+            },
+        ]
+    }
+
+
+@pytest.fixture(scope="session")
 def mock_activities_response():
     """Return a mock activities API response.
 

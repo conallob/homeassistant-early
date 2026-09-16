@@ -71,6 +71,11 @@ class TestEarlyAPICoordinator:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        # Mock spaces request
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
@@ -78,6 +83,7 @@ class TestEarlyAPICoordinator:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
         ]
 
@@ -86,6 +92,85 @@ class TestEarlyAPICoordinator:
         assert len(coordinator._activities) == 2
         assert coordinator._activities["activity_1"] == "Working"
         assert coordinator._activities["activity_2"] == "Meeting"
+
+    @pytest.mark.asyncio
+    async def test_fetch_activities_prefixes_space_name(
+        self,
+        mock_hass,
+        mock_api_token_response,
+        mock_spaces_response_named,
+        mock_activities_response_multi_space,
+    ):
+        """Test activities are prefixed with their space name to disambiguate.
+
+        Regression coverage for the reported use case: an account with the
+        same activity name (e.g. "Administrivia") repeated in multiple
+        EARLY spaces ("folders", one per employer/context) - without the
+        space prefix, the resulting switches/sensor state would be
+        indistinguishable.
+        """
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+
+        token_response = MagicMock()
+        token_response.json.return_value = mock_api_token_response
+        token_response.raise_for_status = MagicMock()
+
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = mock_spaces_response_named
+        spaces_response.raise_for_status = MagicMock()
+
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response_multi_space
+        activities_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            token_response,
+            spaces_response,
+            activities_response,
+        ]
+
+        await coordinator._fetch_activities()
+
+        assert coordinator._activities["activity_1"] == "Google: Administrivia"
+        assert coordinator._activities["activity_2"] == "Andromeda: Administrivia"
+        # The device-side mapping is built from the same activity list, so
+        # it should carry the same prefixed names.
+        assert coordinator._device_side_mapping[1] == "Andromeda: Administrivia"
+
+    @pytest.mark.asyncio
+    async def test_fetch_activities_falls_back_when_spaces_fetch_fails(
+        self, mock_hass, mock_api_token_response, mock_activities_response
+    ):
+        """Test a failed spaces fetch doesn't block the activities fetch.
+
+        _fetch_spaces logs and swallows a RequestException rather than
+        raising (see its docstring) - this confirms _fetch_activities still
+        completes and falls back to bare (unprefixed) activity names,
+        instead of the whole refresh failing over what's ultimately a
+        cosmetic naming feature.
+        """
+        import requests as req_module
+
+        coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
+
+        token_response = MagicMock()
+        token_response.json.return_value = mock_api_token_response
+        token_response.raise_for_status = MagicMock()
+
+        activities_response = MagicMock()
+        activities_response.json.return_value = mock_activities_response
+        activities_response.raise_for_status = MagicMock()
+
+        mock_hass.async_add_executor_job.side_effect = [
+            token_response,
+            req_module.exceptions.ConnectionError("Network error"),
+            activities_response,
+        ]
+
+        await coordinator._fetch_activities()
+
+        assert coordinator._spaces == {}
+        assert coordinator._activities["activity_1"] == "Working"
 
     @pytest.mark.asyncio
     async def test_fetch_activities_empty(self, mock_hass, mock_api_token_response):
@@ -97,6 +182,11 @@ class TestEarlyAPICoordinator:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        # Mock spaces request
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request with empty list
         activities_response = MagicMock()
         activities_response.json.return_value = {"activities": []}
@@ -104,6 +194,7 @@ class TestEarlyAPICoordinator:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
         ]
 
@@ -126,6 +217,14 @@ class TestEarlyAPICoordinator:
         coordinator = EarlyAPICoordinator(mock_hass, "test_key", "test_secret")
         coordinator._token = "expired_token"
 
+        # Mock spaces request (succeeds with the still-valid-looking cached
+        # token - this test is only exercising retry-on-401 for the
+        # activities call itself, so the spaces call is a plain success)
+        spaces_response = MagicMock()
+        spaces_response.status_code = 200
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request with 401 on first call
         activities_response_401 = MagicMock()
         activities_response_401.status_code = 401
@@ -142,6 +241,7 @@ class TestEarlyAPICoordinator:
         activities_response_success.raise_for_status = MagicMock()
 
         mock_hass.async_add_executor_job.side_effect = [
+            spaces_response,
             activities_response_401,
             new_token_response,
             activities_response_success,
@@ -169,6 +269,11 @@ class TestEarlyAPICoordinator:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        # Mock spaces request
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
@@ -182,6 +287,7 @@ class TestEarlyAPICoordinator:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
             tracking_response,
         ]
@@ -237,6 +343,11 @@ class TestEarlyAPICoordinator:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        # Mock spaces request
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
@@ -259,6 +370,7 @@ class TestEarlyAPICoordinator:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
             tracking_response_401,
             new_token_response,
@@ -284,6 +396,12 @@ class TestEarlyAPICoordinator:
         # Set initial token
         coordinator._token = "old_token"
 
+        # Mock spaces request (uses the still-cached old_token)
+        spaces_response = MagicMock()
+        spaces_response.status_code = 200
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
@@ -305,6 +423,7 @@ class TestEarlyAPICoordinator:
         tracking_response_success.raise_for_status = MagicMock()
 
         mock_hass.async_add_executor_job.side_effect = [
+            spaces_response,
             activities_response,
             tracking_response_401,
             new_token_response,  # Token refresh
@@ -380,7 +499,8 @@ class TestEarlyAPICoordinator:
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
             start_response,
-            token_response,  # For update call
+            token_response,  # For update call's spaces fetch (content unused)
+            token_response,  # For update call's activities fetch (content unused)
             tracking_response,
         ]
 
@@ -426,7 +546,8 @@ class TestEarlyAPICoordinator:
             start_response_401,
             new_token_response,
             start_response_success,
-            new_token_response,  # For update call
+            new_token_response,  # For update call's spaces fetch (content unused)
+            new_token_response,  # For update call's activities fetch (content unused)
             tracking_response,
         ]
 
@@ -462,7 +583,8 @@ class TestEarlyAPICoordinator:
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
             stop_response,
-            token_response,  # For update call
+            token_response,  # For update call's spaces fetch (content unused)
+            token_response,  # For update call's activities fetch (content unused)
             tracking_response,
         ]
 
@@ -512,6 +634,11 @@ class TestEarlyAPICoordinator:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        # Mock spaces request
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
@@ -519,6 +646,7 @@ class TestEarlyAPICoordinator:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
         ]
 
@@ -544,6 +672,11 @@ class TestEarlyAPICoordinator:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        # Mock spaces request
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         # Mock activities request
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response_with_unassigned
@@ -551,6 +684,7 @@ class TestEarlyAPICoordinator:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
         ]
 
@@ -680,6 +814,10 @@ class TestEarlyAPICoordinatorListeners:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
         activities_response.raise_for_status = MagicMock()
@@ -691,6 +829,7 @@ class TestEarlyAPICoordinatorListeners:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
             tracking_response,
         ]
@@ -728,6 +867,10 @@ class TestEarlyAPICoordinatorListeners:
         token_response.json.return_value = mock_api_token_response
         token_response.raise_for_status = MagicMock()
 
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.raise_for_status = MagicMock()
+
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
         activities_response.raise_for_status = MagicMock()
@@ -739,6 +882,7 @@ class TestEarlyAPICoordinatorListeners:
 
         mock_hass.async_add_executor_job.side_effect = [
             token_response,
+            spaces_response,
             activities_response,
             tracking_response,
         ]
