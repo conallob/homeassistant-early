@@ -208,6 +208,10 @@ class EarlyAPICoordinator:
         try:
             response = await self._request_with_retry("get", API_SPACES_ENDPOINT)
             data = response.json()
+            # Only reassigned on success, so a failed refresh (except block
+            # below) keeps whatever mapping was last fetched successfully
+            # instead of blanking it out - stale-but-correct space names are
+            # more useful than none at all until the next hourly refresh.
             self._spaces = {
                 space["id"]: space.get("name", "Unknown Space")
                 for space in data.get("data", [])
@@ -460,6 +464,12 @@ class EarlyCurrentTrackingSensor(SensorEntity):
         practice on either response shape (see util.get_current_activity_id)
         - in practice the name always comes from the activities list the
         coordinator fetches separately from the activities endpoint.
+
+        Known gap: that nested name, if it ever appears, would bypass
+        build_activity_display_name's space-name prefix entirely, since
+        there's no confirmed spaceId alongside it to resolve. Harmless
+        today since the branch is dead in practice, but worth revisiting
+        if a future account/API version is ever observed taking it.
         """
         if not self._coordinator.tracking_data:
             return None
