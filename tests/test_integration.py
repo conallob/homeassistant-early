@@ -27,6 +27,11 @@ class TestFullAPIIntegration:
         token_response.status_code = 200
         token_response.raise_for_status = MagicMock()
 
+        spaces_response = MagicMock()
+        spaces_response.json.return_value = {"data": []}
+        spaces_response.status_code = 200
+        spaces_response.raise_for_status = MagicMock()
+
         activities_response = MagicMock()
         activities_response.json.return_value = mock_activities_response
         activities_response.status_code = 200
@@ -70,6 +75,7 @@ class TestFullAPIIntegration:
                 stop_response,
             ]
             mock_get.side_effect = [
+                spaces_response,
                 activities_response,
                 tracking_idle,
                 tracking_active,

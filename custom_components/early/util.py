@@ -41,3 +41,20 @@ def get_current_activity_id(current_tracking: dict[str, Any]) -> str | None:
     if activity_id:
         return activity_id
     return current_tracking.get("activity", {}).get("id")
+
+
+def build_activity_display_name(activity_name: str, space_name: str | None) -> str:
+    """Prefix an activity's name with its EARLY space (folder) name.
+
+    EARLY lets the same activity name (e.g. "Administrivia") exist in
+    multiple spaces - accounts that use one space per employer/context are
+    a common case (see README). Without the space name, switches and the
+    current-activity sensor can't distinguish "Administrivia" in one space
+    from "Administrivia" in another. Falls back to the bare activity name
+    when space_name is unavailable (e.g. the /space API call failed, or an
+    activity has no resolvable spaceId), rather than showing a raw id or a
+    broken-looking prefix.
+    """
+    if not space_name:
+        return activity_name
+    return f"{space_name}: {activity_name}"

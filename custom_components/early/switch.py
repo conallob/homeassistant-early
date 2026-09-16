@@ -117,7 +117,14 @@ async def async_setup_entry(
 
         Known gap: this only diffs by activity id, so an activity renamed
         in EARLY without changing id is neither re-added nor flagged - its
-        switch's name stays stale until an unrelated reload.
+        switch's name stays stale until an unrelated reload. The same
+        applies if the coordinator's spaces fetch (see sensor.py's
+        _fetch_spaces) fails transiently on the very first fetch at
+        startup: switches get created with their bare, unprefixed name,
+        and stay that way even once a later refresh successfully
+        resolves the "Space: Activity" prefix - only sensor.py's
+        current-activity sensor re-resolves the name on every read and
+        so isn't affected.
         """
         current_activities = coordinator.get_all_activities()
         current_ids = set(current_activities)

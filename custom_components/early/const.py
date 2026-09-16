@@ -11,6 +11,7 @@ API_BASE_URL = "https://api.timeular.com/api/v3"
 API_SIGN_IN_ENDPOINT = f"{API_BASE_URL}/developer/sign-in"
 API_TRACKING_ENDPOINT = f"{API_BASE_URL}/tracking"
 API_ACTIVITIES_ENDPOINT = f"{API_BASE_URL}/activities"
+API_SPACES_ENDPOINT = f"{API_BASE_URL}/space"
 API_WEBHOOK_SUBSCRIPTION_ENDPOINT = f"{API_BASE_URL}/webhooks/subscription"
 
 # EARLY webhook event names this integration subscribes to, so tracking
