@@ -1,5 +1,6 @@
 """Common test fixtures for EARLY integration."""
 
+from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,6 +29,9 @@ def mock_hass():
 def mock_config_entry():
     """Return a mock config entry."""
     return ConfigEntry(
+        discovery_keys=MappingProxyType({}),
+        options={},
+        subentries_data=None,
         version=1,
         minor_version=1,
         domain=DOMAIN,
@@ -49,6 +53,9 @@ def mock_bluetooth_config_entry():
     Function-scoped as ConfigEntry may be modified in tests.
     """
     return ConfigEntry(
+        discovery_keys=MappingProxyType({}),
+        options={},
+        subentries_data=None,
         version=1,
         minor_version=1,
         domain=DOMAIN,
@@ -67,6 +74,8 @@ def mock_bluetooth_config_entry_with_api():
     Function-scoped as ConfigEntry may be modified in tests.
     """
     return ConfigEntry(
+        discovery_keys=MappingProxyType({}),
+        subentries_data=None,
         version=1,
         minor_version=1,
         domain=DOMAIN,

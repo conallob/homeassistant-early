@@ -1,5 +1,6 @@
 """Integration tests for the EARLY integration."""
 
+from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -164,6 +165,9 @@ class TestFullAPIIntegration:
     async def test_multiple_config_entries(self, mock_hass):
         """Test multiple config entries can coexist."""
         entry1 = ConfigEntry(
+            discovery_keys=MappingProxyType({}),
+            options={},
+            subentries_data=None,
             version=1,
             minor_version=1,
             domain=DOMAIN,
@@ -178,6 +182,9 @@ class TestFullAPIIntegration:
         )
 
         entry2 = ConfigEntry(
+            discovery_keys=MappingProxyType({}),
+            options={},
+            subentries_data=None,
             version=1,
             minor_version=1,
             domain=DOMAIN,

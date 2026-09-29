@@ -5,3 +5,9 @@ homeassistant>=2026.7.0
 bleak>=3.0,<4
 requests>=2.33.0
 pyserial~=3.5
+# Requirements of the HA components this integration imports (bluetooth ->
+# usb -> hassio); HA doesn't install these with the core package, so
+# importing the components fails without them.
+aiousbwatcher
+serialx
+aiohasupervisor

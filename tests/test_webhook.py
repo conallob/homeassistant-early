@@ -1,6 +1,7 @@
 """Test the EARLY webhook module."""
 
 import asyncio
+from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -524,6 +525,9 @@ class TestWebhookSurvivesRestart:
     def entry_with_stale_webhook_state(self):
         """Return a config entry carrying webhook state from a "previous run"."""
         return ConfigEntry(
+            discovery_keys=MappingProxyType({}),
+            options={},
+            subentries_data=None,
             version=1,
             minor_version=1,
             domain=DOMAIN,
@@ -693,6 +697,6 @@ class TestWebhookRegisterSignatureCompatibility:
         )
 
         assert "test_webhook_id" in hass.data[ha_webhook.DOMAIN]
-        assert hass.data[ha_webhook.DOMAIN]["test_webhook_id"][
-            "allowed_methods"
-        ] == frozenset(["POST"])
+        assert hass.data[ha_webhook.DOMAIN][
+            "test_webhook_id"
+        ].allowed_methods == frozenset(["POST"])
