@@ -23,6 +23,8 @@ A custom Home Assistant integration for [EARLY](https://early.app) (formerly kno
 
 ## Installation
 
+**Requires Home Assistant 2026.7.0 or newer** (which itself requires Python 3.14.2+). Version 1.7.0 raised the minimum to pick up upstream security fixes; stay on 1.6.x if you can't upgrade Home Assistant yet.
+
 ### HACS (Recommended)
 
 1. Add this repository as a custom repository in HACS
