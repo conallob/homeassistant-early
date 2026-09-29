@@ -49,15 +49,14 @@ up, check which one you're reading before assuming credentials are missing.
 
 ## Environment / testing gotcha
 
-`requirements-test.txt` pins `homeassistant` to a version range compatible
-with the CI matrix's Python 3.11/3.12 (currently `>=2024.3.0,<2024.4.0`).
-Newer `homeassistant` releases require Python >=3.12 or >=3.13.2 and will
-fail to install on this matrix — if you bump this pin, verify
-`pip install -r requirements-test.txt -r requirements.txt` actually
-succeeds on both 3.11 and 3.12 first, and that `bleak~=0.21.0` (also
-pinned there) still has wheels for whatever Python version you're
-targeting. This has broken CI outright before (silently, since pip's
-resolver just reports "no matching distribution").
+`requirements-test.txt` pins `homeassistant>=2026.7.0` (the first release
+patched for a security advisory). Those releases require Python >=3.14.2 and
+hard-pin `requests==2.34.2`, so the CI `test` job runs on Python 3.14 only
+and `requests` / `bleak` floors must stay compatible with HA's own pins
+(`bleak>=3.0,<4`). Older Python (3.11/3.12) can no longer install the test
+requirements. If Dependabot can't open a PR for a bump, the usual cause is a
+Python-version or transitive-pin mismatch like this one — verify with
+`uv pip compile requirements-test.txt requirements.txt --python-version 3.14.2`.
 
 ## Commands
 
@@ -78,10 +77,10 @@ flake8 custom_components/early/ tests/ --select=E9,F63,F7,F82   # hard errors
 python -m py_compile custom_components/early/*.py
 ```
 
-If the local Python is too new for the pinned `homeassistant` version (or
-too old), use whichever interpreter satisfies the current
-`requirements-test.txt` pin — check with `python3.11 -m venv` /
-`python3.12 -m venv` if the default `python3` doesn't resolve.
+If the local Python is older than 3.14.2, the pinned `homeassistant` can't be
+installed locally; the tests are fully mocked, so you can still run them with
+an older interpreter after installing the other test requirements by hand,
+and rely on CI for the real 3.14 run.
 
 ## Conventions
 
@@ -92,7 +91,7 @@ too old), use whichever interpreter satisfies the current
   matching past releases (e.g. 1.1.0 for Bluetooth activity mapping, 1.2.0
   for Bluetooth+API switches). Pure docs/CI/test changes don't need a bump.
 - CI (`.github/workflows/ci.yml`): `test` job runs pytest + coverage on
-  Python 3.11 and 3.12; `lint` job runs black/isort/flake8.
+  Python 3.14; `lint` job runs black/isort/flake8.
   `.github/workflows/validate.yml`: HACS validation + `hassfest` (Home
   Assistant's own manifest/structure checks) — these must live under
   `.github/workflows/`, not any other `.github/` subdirectory, or GitHub
