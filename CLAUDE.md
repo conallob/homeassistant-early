@@ -60,7 +60,9 @@ package, and importing `homeassistant.components.bluetooth` pulls in `usb` and
 `hassio`, so a new HA release that adds a component dependency shows up as a
 `ModuleNotFoundError` at test collection. Tests that build `ConfigEntry`
 directly must pass every keyword-only argument the current HA requires
-(`discovery_keys`, `options`, `subentries_data`). If Dependabot can't open a PR for a bump, the usual cause is a
+(`discovery_keys`, `options`, `subentries_data`).
+
+If Dependabot can't open a PR for a bump, the usual cause is a
 Python-version or transitive-pin mismatch like this one — verify with
 `uv pip compile requirements-test.txt requirements.txt --python-version 3.14.2`.
 
