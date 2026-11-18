@@ -80,8 +80,9 @@ class TestManifest:
     def test_manifest_requirements(self, manifest):
         """Test manifest requirements field."""
         assert isinstance(manifest["requirements"], list)
-        assert len(manifest["requirements"]) > 0
-        assert any(r.startswith("requests") for r in manifest["requirements"])
+        # requests ships with Home Assistant itself; hassfest rejects it (and
+        # any other HA core dependency) in a custom integration's manifest.
+        assert not any(r.startswith("requests") for r in manifest["requirements"])
 
     def test_manifest_codeowners(self, manifest):
         """Test manifest codeowners field."""
